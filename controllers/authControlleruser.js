@@ -2,15 +2,41 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcryptjs");
+const { Op } = require("sequelize");
+const nodemailer = require("nodemailer");
 
 // Temporary in-memory OTP store
 const otpStore = {};
 
-// Function to generate a secure 6-character alphanumeric code
+// Nodemailer setup
+const transporter = nodemailer.createTransport({
+  service: "gmail", // Change as per your email provider
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+const sendEmailOTP = async (email, otp) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Your OTP Code",
+      text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+    });
+    console.log(`OTP sent to email: ${email}`);
+  } catch (error) {
+    console.error("Error sending OTP email:", error);
+  }
+};
+
+let currentNumber = 101; // Start from 101
+
 const generateCode = () => {
-  return [...Array(6)]
-    .map(() => Math.random().toString(36)[2].toUpperCase())
-    .join("");
+  const code = `BYZ${currentNumber}`;
+  currentNumber++; // Increment for the next code
+  return code;
 };
 
 // Function to generate OTP (6-digit numeric)
@@ -42,150 +68,99 @@ const validateOTP = (key, otp) => {
   return { valid: true };
 };
 
+const verifiedUsers = new Map(); // Key: email/phone, Value: user details
+
 // User Registration Controller (With OTP for phone)
 const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
-
-    const { name, phone, email, gender, status, userType, password, otp } =
-      req.body;
-
+    const { name, phone, email, gender, status, userType, password, otp } = req.body;
     let { code } = req.body;
 
-    // Ensure at least one of phone or email is provided
     if (!phone && !email) {
-      console.log("Validation failed: Neither phone nor email provided.");
-      return res
-        .status(400)
-        .json({ message: "Either phone or email is required" });
+      return res.status(400).json({ message: "Either phone or email is required" });
     }
 
-    // Validate phone number (must be exactly 10 digits & cannot start with 0)
-    const phoneRegex = /^[1-9][0-9]{9}$/; // Starts with 1-9, followed by 9 digits
+    // Check if user exists
+    const existingUser = await User.findOne({ where: email ? { email } : { phone } });
+    if (existingUser) {
+      return res.status(400).json({ message: `User already exists with this ${email ? "email" : "phone"}.` });
+    }
+
+    // Validate phone number
+    const phoneRegex = /^[1-9][0-9]{9}$/;
     if (phone && !phoneRegex.test(phone)) {
-      console.log(`Invalid phone number entered: ${phone}`);
-      return res.status(400).json({
-        message:
-          "Invalid phone number. Must be 10 digits and cannot start with 0.",
-      });
+      return res.status(400).json({ message: "Invalid phone number. Must be 10 digits and cannot start with 0." });
     }
 
-    // Generate OTP if it's not provided
-    if (phone && !otp) {
+    // Generate and send OTP if not provided
+    const identifier = email || phone;
+    if (!otp && !password) { // Only send OTP if neither OTP nor password is provided
       const generatedOTP = generateOTP();
-      storeOTP(phone, generatedOTP); // Store OTP temporarily
-      console.log(`Generated OTP for ${phone}: ${generatedOTP}`); // Simulate sending OTP
-      return res.status(200).json({ message: "OTP sent to phone", phone });
+      storeOTP(identifier, generatedOTP);
+
+      if (email) {
+        await sendEmailOTP(email, generatedOTP);
+        return res.status(200).json({ message: "OTP sent to email", email });
+      } else if (phone) {
+        await sendPhoneOTP(phone, generatedOTP);
+        return res.status(200).json({ message: "OTP sent to phone", phone });
+      }
     }
 
-    let otpStatus = "not verified"; // Default status
-
-    // Verify OTP
-    if (phone && otp) {
-      const { valid, message } = validateOTP(phone, otp);
+    // Verify OTP if provided
+    if (otp) {
+      const { valid, message } = validateOTP(identifier, otp);
       if (!valid) {
-        console.log(`OTP verification failed for ${phone}: ${message}`);
         return res.status(400).json({ message });
       }
-      console.log(`OTP verified successfully for ${phone}`);
-      otpStatus = "success"; // Update status to success
+
+      // Store verified user details temporarily
+      verifiedUsers.set(identifier, { name, phone, email, gender, status, userType, code });
+
+      return res.status(200).json({ message: "OTP verified successfully. Proceed to set your password." });
     }
 
-    // Ensure required fields are not null after OTP verification
-    if (!name || !gender || !userType) {
-      console.log("Validation failed: Required user fields are missing.");
-      return res.status(400).json({
-        message: "Missing required user fields (name, gender, userType).",
-      });
+    // Ensure password is provided only after OTP verification
+    if (!password || password.trim() === "") {
+      return res.status(400).json({ message: "Password is required after OTP verification." });
     }
 
-    // Ensure password is provided for email-based registration
-    if (email && (!password || password.trim() === "")) {
-      console.log(
-        "Validation failed: Password is required for email registration."
-      );
-      return res
-        .status(400)
-        .json({ message: "Password is required for email registration." });
+    // Retrieve verified user data from memory
+    const verifiedUser = verifiedUsers.get(identifier);
+    if (!verifiedUser) {
+      return res.status(400).json({ message: "No verified user found. Please verify OTP first." });
     }
 
-    if (code) {
-      code = code.toUpperCase();
-    }
-
-    // Handle code based on userType
-    let userCode = code;
-
-    if (userType === "Doctor") {
-      userCode = generateCode(); // Generate a random code for the doctor
-      console.log(`Generated code for Doctor: ${userCode}`);
-    } else if (userType !== "Doctor" && userType === "OtherUser" && code) {
-      // Verify if the provided code belongs to a registered doctor
-      const doctor = await User.findOne({
-        where: { code, userType: "Doctor" },
-      });
-
+    // Handle Doctor Code Logic
+    let userCode = verifiedUser.code ? verifiedUser.code.toUpperCase() : null;
+    if (verifiedUser.userType === "Doctor") {
+      userCode = generateCode();
+    } else if (verifiedUser.userType === "OtherUser" && userCode) {
+      const doctor = await User.findOne({ where: { code: userCode, userType: "Doctor" } });
       if (!doctor) {
-        console.log(
-          `Invalid code entered by user: ${code}. No matching doctor found.`
-        );
-        return res
-          .status(400)
-          .json({ message: "Invalid code. No doctor found with this code." });
+        return res.status(400).json({ message: "Invalid doctor code." });
       }
-      console.log(
-        `Code verification passed. User linked to Doctor with code: ${code}`
-      );
-    } else if (userType === "OtherUser" && !code) {
-      console.log("Validation failed: No code provided for regular user.");
-      return res
-        .status(400)
-        .json({ message: "Code is required for OtherUsers" });
+    } else if (verifiedUser.userType === "OtherUser" && !userCode) {
+      return res.status(400).json({ message: "Doctor code is required for OtherUsers." });
     }
 
-    // Set initial points for doctors
-    const initialPoints = userType === "Doctor" ? 500 : null; // Doctors start with 500 points
-
-    // Hash password (if provided)
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
-    console.log("Password hashing completed.");
-
-    // Create new user
-    console.log("Creating new user...");
+    // Hash Password & Create User
+    const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
-      name,
-      phone,
-      email,
-      gender,
-      status,
-      userType,
+      ...verifiedUser,
       code: userCode,
-      points: initialPoints,
       password: hashedPassword,
+      points: verifiedUser.userType === "Doctor" ? 500 : null,
     });
 
-    console.log("User created successfully:", newUser.dataValues);
+    verifiedUsers.delete(identifier); // Remove from memory
 
-    // Verify user actually exists in DB
-    const checkUser = await User.findOne({ where: { id: newUser.id } });
-    if (!checkUser) {
-      console.log("User was not created in the database. Debug required!");
-      return res.status(500).json({ message: "User creation failed" });
-    }
+    // Generate Token
+    const token = jwt.sign({ id: newUser.id, userType: newUser.userType }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-    // Generate token
-    const token = jwt.sign(
-      { id: newUser.id, userType: newUser.userType },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    return res.status(201).json({ message: "User registered successfully", token });
 
-    console.log("Registration successful. Sending response...");
-    return res.status(201).json({
-      message: "User registered successfully",
-      status: otpStatus, // Send OTP status here
-      token,
-    });
   } catch (error) {
     console.error("Error registering user:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -206,6 +181,26 @@ const loginUser = async (req, res) => {
     }
 
     let user;
+
+    // **Find user in the database by phone or email**
+    user = await User.findOne({
+      where: {
+        [Op.or]: [{ email }, { phone }],
+      },
+    });
+
+    if (!user) {
+      console.log(
+        `User not registered with ${email ? "email" : "phone"}: ${
+          email || phone
+        }`
+      );
+      return res.status(404).json({
+        message: `User is not registered with this ${
+          email ? "email" : "phone"
+        }.`,
+      });
+    }
 
     if (phone) {
       // Validate phone number
@@ -236,7 +231,7 @@ const loginUser = async (req, res) => {
           return res.status(400).json({ message });
         }
         console.log(`OTP verified successfully for ${phone}`);
-        otpStatus = "success"
+        otpStatus = "success";
       }
 
       // Find user by phone
@@ -278,7 +273,9 @@ const loginUser = async (req, res) => {
     );
 
     console.log("Login successful. Sending response...");
-    return res.status(200).json({ message: "Login successful", token, userType: user.userType});
+    return res
+      .status(200)
+      .json({ message: "Login successful", token, userType: user.userType });
   } catch (error) {
     console.error("Error logging in:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -287,36 +284,35 @@ const loginUser = async (req, res) => {
 
 async function verifyUserToken(req, res, next) {
   try {
-      // Get the token from the Authorization header
-      const token = req.headers.authorization?.split(' ')[1]; // Assuming format: "Bearer <token>"
-      console.log("Token received:", token);
+    // Get the token from the Authorization header
+    const token = req.headers.authorization?.split(" ")[1]; // Assuming format: "Bearer <token>"
+    console.log("Token received:", token);
 
-      if (!token) {
-          return res.status(403).json({ message: "Token is required" });
+    if (!token) {
+      return res.status(403).json({ message: "Token is required" });
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ error: "Invalid or expired token" });
       }
 
-      jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-          if (err) {
-              return res.status(401).json({ error: "Invalid or expired token" });
-          }
+      // Extract user ID from the decoded token
+      const userId = decoded.id;
+      console.log("Decoded token:", decoded);
 
-          // Extract user ID from the decoded token
-          const userId = decoded.id;
-          console.log("Decoded token:", decoded);
+      const user = await User.findByPk(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
 
-          const user = await User.findByPk(userId);
-          if (!user) {
-              return res.status(404).json({ error: "User not found" });
-          }
-
-          req.user = user; // Attach user details to request
-          next();
-      });
+      req.user = user; // Attach user details to request
+      next();
+    });
   } catch (error) {
-      console.error("Error verifying token:", error);
-      return res.status(401).json({ message: "Invalid or expired token" });
+    console.error("Error verifying token:", error);
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
-
 
 module.exports = { registerUser, loginUser, verifyUserToken };

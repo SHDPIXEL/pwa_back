@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../connection");
+const User = require("../models/user");
 
 const ChallengeSubmitForm = sequelize.define(
   "ChallengeSubmitForm",
@@ -9,6 +10,15 @@ const ChallengeSubmitForm = sequelize.define(
       autoIncrement: true,
       primaryKey: true,
       allowNull: false,
+    },
+    userId: {
+      // Foreign key reference to User
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
     },
     name: {
       type: DataTypes.STRING,
@@ -56,12 +66,12 @@ const ChallengeSubmitForm = sequelize.define(
 
 // Sync with error handling
 (async () => {
-    try {
-      await ChallengeSubmitForm.sync({ force: false });
-      console.log("The table for the Agent model was just (re)created!");
-    } catch (error) {
-      console.error("Error syncing the Agent model:", error);
-    }
-  })();
+  try {
+    await ChallengeSubmitForm.sync({ force: false });
+    console.log("The table for the Agent model was just (re)created!");
+  } catch (error) {
+    console.error("Error syncing the Agent model:", error);
+  }
+})();
 
 module.exports = ChallengeSubmitForm;
