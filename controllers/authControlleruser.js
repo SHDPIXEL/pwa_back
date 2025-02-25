@@ -34,10 +34,16 @@ const sendEmailOTP = async (email, otp) => {
 let currentNumber = 101; // Start from 101
 
 const generateCode = () => {
-  const code = `BYZ${currentNumber}`;
-  currentNumber++; // Increment for the next code
+  const code = `BYZ${currentNumber}`; // Generate the code
+  currentNumber++; // Increment for the next user
   return code;
 };
+
+// // Example usage:
+// console.log(generateCode()); // BYZ101
+// console.log(generateCode()); // BYZ102
+// console.log(generateCode()); // BYZ103
+// console.log(generateCode()); // BYZ103
 
 // Function to generate OTP (6-digit numeric)
 const generateOTP = () => {
