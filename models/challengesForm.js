@@ -11,15 +11,15 @@ const ChallengeSubmitForm = sequelize.define(
       primaryKey: true,
       allowNull: false,
     },
-    userId: {
-      // Foreign key reference to User
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: User,
-        key: "id",
-      },
-    },
+    // userId: {
+    //   // Foreign key reference to User
+    //   type: DataTypes.INTEGER,
+    //   allowNull: false,
+    //   references: {
+    //     model: User,
+    //     key: "id",
+    //   },
+    // },
     name: {
       type: DataTypes.STRING,
       allowNull: false,
