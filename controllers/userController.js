@@ -255,7 +255,7 @@ const getChallengeFormById = async (req, res) => {
       const LoggedUser = decoded.userId;
 
       // Find the challenge form associated with the logged-in user
-      const challenge = await ChallengeSubmitForm.findOne({ where: { userId: LoggedUser } });
+      const challenge = await ChallengeSubmitForm.findAll ();
 
       if (!challenge) {
         return res.status(404).json({ error: "Challenge not found for this user" });
@@ -376,6 +376,10 @@ const deleteChallengeForm = async (req, res) => {
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
+
+const paymentController = async (req, res) => {
+  
+}
 
 module.exports = {
   getUserdetailsById,

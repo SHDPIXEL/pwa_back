@@ -1,12 +1,15 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
+const Payment = require("../models/payment");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 const nodemailer = require("nodemailer");
+const axios = require("axios"); // Import axios
 
 // Temporary in-memory OTP store
 const otpStore = {};
+const senderIds = ["CELAGE"];
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
@@ -31,19 +34,38 @@ const sendEmailOTP = async (email, otp) => {
   }
 };
 
+// Send OTP via SMS
+async function sendOtpViaSms(phone, otp) {
+  const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
+  const message = `Your OTP for Mobile verification is ${otp} use this Code to validate your verification. CELGNX`;
+
+  const apiUrl =
+    process.env.OTP_BASE_SEND +
+    `?username=celagenx&password=celagenx&senderid=${senderId}&message=${encodeURIComponent(message)}&numbers=${phone}`;
+
+  console.log(process.env.OTP_BASE_SEND); 
+  try {
+    const response = await axios.get(apiUrl);
+    if (response.status === 200) {
+      console.log(`OTP ${otp} sent to ${phone} via senderId ${senderId}`);
+      return "OTP sent successfully";
+    } else {
+      console.error("Error sending OTP:", response.data);
+      throw new Error("Failed to send OTP");
+    }
+  } catch (error) {
+    console.error("Error during API request to InsignSMS:", error);
+    throw new Error("Failed to send OTP");
+  }
+}
+
 let currentNumber = 101; // Start from 101
 
 const generateCode = () => {
-  const code = `BYZ${currentNumber}`; // Generate the code
-  currentNumber++; // Increment for the next user
+  const code = `BYZ${currentNumber}`;
+  currentNumber++; // Increment for the next code
   return code;
 };
-
-// // Example usage:
-// console.log(generateCode()); // BYZ101
-// console.log(generateCode()); // BYZ102
-// console.log(generateCode()); // BYZ103
-// console.log(generateCode()); // BYZ103
 
 // Function to generate OTP (6-digit numeric)
 const generateOTP = () => {
@@ -74,99 +96,190 @@ const validateOTP = (key, otp) => {
   return { valid: true };
 };
 
-const verifiedUsers = new Map(); // Key: email/phone, Value: user details
-
 // User Registration Controller (With OTP for phone)
 const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
-    const { name, phone, email, gender, status, userType, password, otp } = req.body;
+
+    const { name, phone, email, gender, status, userType, password, otp } =
+      req.body;
+
     let { code } = req.body;
 
+    // Ensure at least one of phone or email is provided
     if (!phone && !email) {
-      return res.status(400).json({ message: "Either phone or email is required" });
+      console.log("Validation failed: Neither phone nor email provided.");
+      return res
+        .status(400)
+        .json({ message: "Either phone or email is required" });
     }
 
-    // Check if user exists
-    const existingUser = await User.findOne({ where: email ? { email } : { phone } });
-    if (existingUser) {
-      return res.status(400).json({ message: `User already exists with this ${email ? "email" : "phone"}.` });
-    }
-
-    // Validate phone number
-    const phoneRegex = /^[1-9][0-9]{9}$/;
-    if (phone && !phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number. Must be 10 digits and cannot start with 0." });
-    }
-
-    // Generate and send OTP if not provided
-    const identifier = email || phone;
-    if (!otp && !password) { // Only send OTP if neither OTP nor password is provided
-      const generatedOTP = generateOTP();
-      storeOTP(identifier, generatedOTP);
-
-      if (email) {
-        await sendEmailOTP(email, generatedOTP);
-        return res.status(200).json({ message: "OTP sent to email", email });
-      } else if (phone) {
-        await sendPhoneOTP(phone, generatedOTP);
-        return res.status(200).json({ message: "OTP sent to phone", phone });
-      }
-    }
-
-    // Verify OTP if provided
-    if (otp) {
-      const { valid, message } = validateOTP(identifier, otp);
-      if (!valid) {
-        return res.status(400).json({ message });
-      }
-
-      // Store verified user details temporarily
-      verifiedUsers.set(identifier, { name, phone, email, gender, status, userType, code });
-
-      return res.status(200).json({ message: "OTP verified successfully. Proceed to set your password." });
-    }
-
-    // Ensure password is provided only after OTP verification
-    if (!password || password.trim() === "") {
-      return res.status(400).json({ message: "Password is required after OTP verification." });
-    }
-
-    // Retrieve verified user data from memory
-    const verifiedUser = verifiedUsers.get(identifier);
-    if (!verifiedUser) {
-      return res.status(400).json({ message: "No verified user found. Please verify OTP first." });
-    }
-
-    // Handle Doctor Code Logic
-    let userCode = verifiedUser.code ? verifiedUser.code.toUpperCase() : null;
-    if (verifiedUser.userType === "Doctor") {
-      userCode = generateCode();
-    } else if (verifiedUser.userType === "OtherUser" && userCode) {
-      const doctor = await User.findOne({ where: { code: userCode, userType: "Doctor" } });
-      if (!doctor) {
-        return res.status(400).json({ message: "Invalid doctor code." });
-      }
-    } else if (verifiedUser.userType === "OtherUser" && !userCode) {
-      return res.status(400).json({ message: "Doctor code is required for OtherUsers." });
-    }
-
-    // Hash Password & Create User
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await User.create({
-      ...verifiedUser,
-      code: userCode,
-      password: hashedPassword,
-      points: verifiedUser.userType === "Doctor" ? 500 : null,
+    // **Check if user already exists by email or phone**
+    const existingUser = await User.findOne({
+      where: email
+        ? { email } // If email is provided, check only email
+        : { phone }, // If phone is provided, check only phone
     });
 
-    verifiedUsers.delete(identifier); // Remove from memory
+    if (existingUser) {
+      console.log(
+        `User already exists with ${email ? "email" : "phone"}: ${
+          email || phone
+        }`
+      );
+      return res.status(400).json({
+        message: `User already exists with this ${email ? "email" : "phone"}.`,
+      });
+    }
 
-    // Generate Token
-    const token = jwt.sign({ id: newUser.id, userType: newUser.userType }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    // Validate phone number (must be exactly 10 digits & cannot start with 0)
+    const phoneRegex = /^[1-9][0-9]{9}$/; // Starts with 1-9, followed by 9 digits
+    if (phone && !phoneRegex.test(phone)) {
+      console.log(`Invalid phone number entered: ${phone}`);
+      return res.status(400).json({
+        message:
+          "Invalid phone number. Must be 10 digits and cannot start with 0.",
+      });
+    }
 
-    return res.status(201).json({ message: "User registered successfully", token });
+    // Send OTP if it's not provided
+    if (phone && !otp) {
+      const generatedOTP = generateOTP();
+      storeOTP(phone, generatedOTP);
 
+      try {
+        await sendOtpViaSms(phone, generatedOTP);
+        return res.status(200).json({ message: "OTP sent to phone", phone });
+      } catch (error) {
+        return res.status(500).json({ message: "Failed to send OTP via SMS" });
+      }
+    }
+
+    if (email && !otp) {
+      const generatedOTP = generateOTP();
+      storeOTP(email, generatedOTP);
+      await sendEmailOTP(email, generatedOTP);
+      return res.status(200).json({ message: "OTP sent to email", email });
+    }
+
+    let otpStatus = "not verified"; // Default status
+
+    // Verify OTP
+    if (phone && otp) {
+      const { valid, message } = validateOTP(phone, otp);
+      if (!valid) {
+        console.log(`OTP verification failed for ${phone}: ${message}`);
+        return res.status(400).json({ message });
+      }
+      console.log(`OTP verified successfully for ${phone}`);
+      otpStatus = "success"; // Update status to success
+    }
+
+    if (email && otp) {
+      const { valid, message } = validateOTP(email, otp);
+      if (!valid) {
+        console.log(`OTP verification failed for ${email}: ${message}`);
+        return res.status(400).json({ message });
+      }
+      console.log(`OTP verified successfully for ${email}`);
+      otpStatus = "success";
+    }
+
+    // Ensure required fields are not null after OTP verification
+    if (!name || !gender || !userType) {
+      console.log("Validation failed: Required user fields are missing.");
+      return res.status(400).json({
+        message: "Missing required user fields (name, gender, userType).",
+      });
+    }
+
+    // Ensure password is provided for email-based registration
+    if (email && (!password || password.trim() === "")) {
+      console.log(
+        "Validation failed: Password is required for email registration."
+      );
+      return res
+        .status(400)
+        .json({ message: "Password is required for email registration." });
+    }
+
+    if (code) {
+      code = code.toUpperCase();
+    }
+
+    // Handle code based on userType
+    let userCode = code;
+
+    if (userType === "Doctor") {
+      userCode = generateCode(); // Generate a random code for the doctor
+      console.log(`Generated code for Doctor: ${userCode}`);
+    } else if (userType !== "Doctor" && userType === "OtherUser" && code) {
+      // Verify if the provided code belongs to a registered doctor
+      const doctor = await User.findOne({
+        where: { code, userType: "Doctor" },
+      });
+
+      if (!doctor) {
+        console.log(
+          `Invalid code entered by user: ${code}. No matching doctor found.`
+        );
+        return res
+          .status(400)
+          .json({ message: "Invalid code. No doctor found with this code." });
+      }
+      console.log(
+        `Code verification passed. User linked to Doctor with code: ${code}`
+      );
+    } else if (userType === "OtherUser" && !code) {
+      console.log("Validation failed: No code provided for regular user.");
+      return res
+        .status(400)
+        .json({ message: "Code is required for OtherUsers" });
+    }
+
+    // Set initial points for doctors
+    const initialPoints = userType === "Doctor" ? 500 : null; // Doctors start with 500 points
+
+    // Hash password (if provided)
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    console.log("Password hashing completed.");
+
+    // Create new user
+    console.log("Creating new user...");
+    const newUser = await User.create({
+      name,
+      phone,
+      email,
+      gender,
+      status,
+      userType,
+      code: userCode,
+      points: initialPoints,
+      password: hashedPassword,
+    });
+
+    console.log("User created successfully:", newUser.dataValues);
+
+    // Verify user actually exists in DB
+    const checkUser = await User.findOne({ where: { id: newUser.id } });
+    if (!checkUser) {
+      console.log("User was not created in the database. Debug required!");
+      return res.status(500).json({ message: "User creation failed" });
+    }
+
+    // Generate token
+    const token = jwt.sign(
+      { id: newUser.id, userType: newUser.userType },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    console.log("Registration successful. Sending response...");
+    return res.status(201).json({
+      message: "User registered successfully",
+      status: otpStatus, // Send OTP status here
+      token,
+    });
   } catch (error) {
     console.error("Error registering user:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -219,12 +332,16 @@ const loginUser = async (req, res) => {
         });
       }
 
-      // Generate OTP if it's not provided
       if (phone && !otp) {
         const generatedOTP = generateOTP();
         storeOTP(phone, generatedOTP);
-        console.log(`Generated OTP for ${phone}: ${generatedOTP}`);
-        return res.status(200).json({ message: "OTP sent to phone", phone });
+  
+        try {
+          await sendOtpViaSms(phone, generatedOTP);
+          return res.status(200).json({ message: "OTP sent to phone", phone });
+        } catch (error) {
+          return res.status(500).json({ message: "Failed to send OTP via SMS" });
+        }
       }
 
       let otpStatus = "not verified"; // Default status
@@ -321,4 +438,106 @@ async function verifyUserToken(req, res, next) {
   }
 }
 
-module.exports = { registerUser, loginUser, verifyUserToken };
+const paymentController = async (req, res) => {
+  try {
+    const { txnid, amount, productinfo, firstname, email } = req.body;
+
+    const key = process.env.PAYU_KEY;
+    const salt = process.env.PAYU_SALT;
+    const surl = process.env.SUCCESS_URL;
+    const furl = process.env.FAILURE_URL;
+    const payu_url = process.env.PAYU_API_URL; // e.g., https://secure.payu.in/_payment
+
+    if (!txnid || !amount || !productinfo || !firstname || !email) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    // Generate hash
+    const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
+    const hash = crypto.createHash("sha512").update(hashString).digest("hex");
+
+    // Store payment in DB with "pending" status
+    const newPayment = new Payment({
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+      status: "pending", // Initial status before payment completion
+    });
+
+    await newPayment.save();
+
+    // Create payload
+    const payuPayload = {
+      key,
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+      surl,
+      furl,
+      hash,
+      service_provider: "payu_paisa",
+    };
+
+    return res.json({ payu_url, payuPayload });
+  } catch (error) {
+    console.error("Payment Error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const successController = async (req, res) => {
+  try {
+    const { txnid, status } = req.body;
+
+    // Verify the payment
+    const payment = await Payment.findOne({ txnid });
+
+    if (!payment) {
+      return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    // Update payment status
+    payment.status = status === "success" ? "completed" : "failed";
+    await payment.save();
+
+    res.json({ message: "Payment Successful", payment });
+  } catch (error) {
+    console.error("Success Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const failureController = async (req, res) => {
+  try {
+    const { txnid, status } = req.body;
+
+    // Find the payment
+    const payment = await Payment.findOne({ txnid });
+
+    if (!payment) {
+      return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    // Mark as failed
+    payment.status = status === "failed" ? "failed" : "";
+    await payment.save();
+
+    res.json({ message: "Payment Failed", payment });
+  } catch (error) {
+    console.error("Failure Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+module.exports = {
+  registerUser,
+  loginUser,
+  verifyUserToken,
+  paymentController,
+  successController,
+  failureController,
+};
