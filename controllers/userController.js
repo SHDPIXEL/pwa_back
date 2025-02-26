@@ -327,7 +327,7 @@ const getChallengeForm = async (req, res) => {
     if (!userChallenges.length) {
       return res
         .status(404)
-        .json({ error: "No challenges found for this user" });
+        .json({ error: "No challenges found for this user",userChallenges });
     }
 
     const challengeIds = userChallenges.map(
