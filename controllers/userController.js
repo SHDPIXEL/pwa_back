@@ -131,7 +131,21 @@ const getChallengesByDoctor = async (req, res) => {
         .json({ error: "No challenges found for this week" });
     }
 
-    return res.status(200).json(challenges);
+    // Fetch the count of submitted forms for each challenge
+    const challengesWithCount = await Promise.all(
+      challenges.map(async (challenge) => {
+        const submissionCount = await ChallengeSubmitForm.count({
+          where: { challengeId: challenge.id },
+        });
+
+        return {
+          ...challenge.dataValues,
+          submissionCount, // Add count of submitted forms
+        };
+      })
+    );
+
+    return res.status(200).json(challengesWithCount);
   } catch (error) {
     console.error("Error fetching challenges:", error);
     return res
@@ -254,7 +268,7 @@ const submitChallengeForm = async (req, res) => {
         remark,
         mediaType,
         mediaFiles,
-        challengeId
+        challengeId,
       });
 
       // Create challenge submission with user ID
@@ -265,7 +279,7 @@ const submitChallengeForm = async (req, res) => {
         remark,
         mediaType,
         mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
-        challengeId
+        challengeId,
       });
 
       res.status(201).json({
@@ -282,7 +296,7 @@ const submitChallengeForm = async (req, res) => {
 const getChallengeForm = async (req, res) => {
   try {
     // Extract token from headers
-    const token = req.headers.authorization?.split(" ")[1]; 
+    const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
       return res.status(401).json({ error: "Unauthorized: No token provided" });
     }
@@ -311,86 +325,82 @@ const getChallengeForm = async (req, res) => {
     console.log("User Challenges:", userChallenges);
 
     if (!userChallenges.length) {
-      return res.status(404).json({ error: "No challenges found for this user" });
+      return res
+        .status(404)
+        .json({ error: "No challenges found for this user" });
     }
 
-    const challengeIds = userChallenges.map(challenge => challenge.challengeId);
+    const challengeIds = userChallenges.map(
+      (challenge) => challenge.challengeId
+    );
     console.log("Challenge IDs:", challengeIds);
 
-    // Step 2: Find weekIds from challenges
-    const weeks = await Challenges.findAll({
-      where: { id: challengeIds },
-      attributes: ["weekId"],
-    });
-    console.log("Fetched Weeks:", weeks);
-
-    if (!weeks.length) {
-      return res.status(404).json({ error: "No weeks found for the challenges" });
-    }
-
-    const weekIds = weeks.map(week => week.weekId);
-    console.log("Week IDs:", weekIds);
-
-    // Step 3: Find forms for the retrieved weekIds
-    const forms = await ChallengeSubmitForm.findAll({
-      where: { weekId: weekIds },
-    });
-    console.log("Fetched Forms:", forms);
-
-    if (!forms.length) {
-      return res.status(404).json({ error: "No forms found for the weeks" });
-    }
-
-    res.status(200).json(forms);
+    res.status(200).json(userChallenges);
   } catch (error) {
     console.error("Error fetching challenge forms:", error);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
 
-
 const getChallengeFormById = async (req, res) => {
   try {
-    // Extract token from the Authorization header
+    console.log("Received request to get challenge form");
+
+    // Extract token from headers
     const token = req.headers.authorization?.split(" ")[1];
+    console.log("Extracted Token:", token);
 
     if (!token) {
+      console.error("Error: Token is missing");
       return res.status(403).json({ error: "Token is required" });
     }
 
-    // Verify the token
+    // Verify JWT token
     jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
       if (err) {
+        console.error("Error: Invalid or expired token", err.message);
         return res.status(401).json({ error: "Invalid or expired token" });
       }
 
-      // Debugging: Log the decoded token
-      console.log("Decoded Token get user:", decoded);
+      console.log("Decoded Token:", decoded);
 
-      // Extract user ID from the decoded token
       const LoggedUser = decoded?.id;
+      console.log("Logged-in User ID:", LoggedUser);
 
-      // Debugging: Check if userId exists
       if (!LoggedUser) {
-        console.error("Error: userId is undefined in token");
+        console.error("Error: userId is missing in token");
         return res.status(400).json({ error: "Invalid token, userId missing" });
       }
 
-      // Find the challenge form associated with the logged-in user
-      const challenge = await ChallengeSubmitForm.findAll({
-        where: { userId: LoggedUser }, // Fetch records specific to the user
+      // Fetch submitted challenge form for the logged-in user
+      const challengeForm = await ChallengeSubmitForm.findOne({
+        where: { userId: LoggedUser },
       });
 
-      if (!challenge || challenge.length === 0) {
+      console.log("Fetched Challenge Form:", challengeForm);
+
+      if (!challengeForm) {
+        console.error("Error: No challenge found for user", LoggedUser);
         return res
           .status(404)
           .json({ error: "Challenge not found for this user" });
       }
 
-      res.status(200).json(challenge);
+      // Fetch the challenge name separately
+      const challenge = await Challenges.findOne({
+        where: { id: challengeForm.challengeId },
+        attributes: ["name"],
+      });
+
+      console.log("Fetched Challenge:", challenge);
+
+      res.status(200).json({
+        ...challengeForm.dataValues,
+        challengeName: challenge ? challenge.name : null, // Add challenge name to response
+      });
     });
   } catch (error) {
-    console.error("Error fetching challenge by user ID:", error);
+    console.error("Server error:", error.message);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };

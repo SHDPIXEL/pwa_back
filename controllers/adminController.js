@@ -185,10 +185,15 @@ const getChallengeById = async (req, res) => {
 // Update a challenge
 const updateChallenge = async (req, res) => {
   try {
+    console.log("Update Challenge API called");
+
     // Check if only the status is being updated
     if (req.body.status && Object.keys(req.body).length === 1) {
+      console.log("Updating only status...");
+
       const challenge = await Challenges.findByPk(req.params.id);
       if (!challenge) {
+        console.error("Challenge not found");
         return res.status(404).json({ error: "Challenge not found" });
       }
 
@@ -199,17 +204,23 @@ const updateChallenge = async (req, res) => {
         .json({ message: "Status updated successfully", challenge });
     }
 
-    // Handle file uploads if the request is updating more than just status
+    // Handle file uploads
     uploadImage("challenges").fields([
       { name: "challenge_image1", maxCount: 1 },
       { name: "challenge_image2", maxCount: 1 },
       { name: "challenge_image3", maxCount: 1 },
     ])(req, res, async (err) => {
+      console.log("File upload middleware executed");
+
       if (err) {
+        console.error("File upload error:", err);
         return res
           .status(400)
           .json({ error: `File upload error: ${err.message}` });
       }
+
+      console.log("Request Body:", req.body);
+      console.log("Uploaded Files:", req.files);
 
       const { name, shortDescription, descriptions, rewards, status, weekId } =
         req.body;
@@ -217,31 +228,41 @@ const updateChallenge = async (req, res) => {
       // Find existing challenge
       const challenge = await Challenges.findByPk(req.params.id);
       if (!challenge) {
+        console.error("Challenge not found");
         return res.status(404).json({ error: "Challenge not found" });
       }
+      console.log("Challenge found:", challenge);
 
       // Preserve existing descriptions if not updated
       let updatedDescriptions = challenge.descriptions;
       if (descriptions) {
         try {
+          console.log("Raw descriptions:", descriptions);
           const parsedDescriptions = JSON.parse(descriptions);
           if (Array.isArray(parsedDescriptions)) {
             updatedDescriptions = parsedDescriptions;
           }
         } catch (error) {
+          console.error("Invalid descriptions format:", error);
           return res.status(400).json({ error: "Invalid descriptions format" });
         }
       }
 
-      // Retrieve existing images
+      // ✅ Retrieve and Parse Existing Images (Fix)
       let existingImages = [];
       try {
-        existingImages = challenge.challenge_images
-          ? JSON.parse(challenge.challenge_images)
-          : [];
+        existingImages =
+          typeof challenge.challenge_images === "string"
+            ? JSON.parse(challenge.challenge_images)
+            : Array.isArray(challenge.challenge_images)
+            ? challenge.challenge_images
+            : [];
       } catch (error) {
+        console.error("Invalid existing image format:", error);
         return res.status(500).json({ error: "Invalid existing image format" });
       }
+
+      console.log("Existing Images (Parsed):", existingImages);
 
       // Ensure existingImages has at least 3 slots
       existingImages = [
@@ -250,32 +271,32 @@ const updateChallenge = async (req, res) => {
         existingImages[2] || null,
       ];
 
-      // Update only the images that have been provided
-      const updatedImages = [
-        req.files?.["challenge_image1"]
-          ? `assets/images/challenges/${req.files["challenge_image1"][0].filename}`
-          : existingImages[0],
-        req.files?.["challenge_image2"]
-          ? `assets/images/challenges/${req.files["challenge_image2"][0].filename}`
-          : existingImages[1],
-        req.files?.["challenge_image3"]
-          ? `assets/images/challenges/${req.files["challenge_image3"][0].filename}`
-          : existingImages[2],
-      ];
+      // ✅ Update Only the Provided Images (Fix)
+      const updatedImages = [...existingImages];
+      if (req.files?.["challenge_image1"]) {
+        updatedImages[0] = `assets/images/challenges/${req.files["challenge_image1"][0].filename}`;
+      }
+      if (req.files?.["challenge_image2"]) {
+        updatedImages[1] = `assets/images/challenges/${req.files["challenge_image2"][0].filename}`;
+      }
+      if (req.files?.["challenge_image3"]) {
+        updatedImages[2] = `assets/images/challenges/${req.files["challenge_image3"][0].filename}`;
+      }
 
-      // Ensure images array doesn't contain `null`
-      const finalImages = updatedImages.filter(Boolean);
+      console.log("Final updated images:", updatedImages);
 
-      // Update Challenge
+      // ✅ Update Challenge with Correct Image Array
       await challenge.update({
         name: name || challenge.name,
         shortDescription: shortDescription || challenge.shortDescription,
         descriptions: updatedDescriptions,
-        challenge_images: finalImages, // ✅ Ensure updated images are stored properly
+        challenge_images: JSON.stringify(updatedImages), // ✅ Store as JSON string
         rewards: rewards || challenge.rewards,
         status: status || challenge.status,
         weekId: weekId || challenge.weekId,
       });
+
+      console.log("Challenge updated successfully");
 
       res
         .status(200)
@@ -333,8 +354,7 @@ const createProduct = async (req, res) => {
         description,
         oldPrice: oldPrice ? parseFloat(oldPrice) : null,
         newPrice: parseFloat(newPrice),
-        product_image:
-        imagePath.length > 0 ? JSON.stringify(imagePath) : null,
+        product_image: imagePath.length > 0 ? JSON.stringify(imagePath) : null,
         status,
         inStock: isProductInStock,
       });
@@ -389,7 +409,8 @@ const updateProduct = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, description, oldPrice, newPrice, status, inStock } = req.body;
+      const { name, description, oldPrice, newPrice, status, inStock } =
+        req.body;
       const product = await Products.findByPk(req.params.id);
 
       if (!product) return res.status(404).json({ error: "Product not found" });
@@ -402,11 +423,13 @@ const updateProduct = async (req, res) => {
       await product.update({
         name: name || product.name,
         description: description || product.description,
-        oldPrice: oldPrice !== undefined ? parseFloat(oldPrice) : product.oldPrice,
-        newPrice: newPrice !== undefined ? parseFloat(newPrice) : product.newPrice,
-        product_image: imageFile,  // No need for JSON.stringify() if storing a single image
+        oldPrice:
+          oldPrice !== undefined ? parseFloat(oldPrice) : product.oldPrice,
+        newPrice:
+          newPrice !== undefined ? parseFloat(newPrice) : product.newPrice,
+        product_image: imageFile, // No need for JSON.stringify() if storing a single image
         status: status || product.status,
-        inStock: inStock !== undefined ? JSON.parse(inStock) : product.inStock, 
+        inStock: inStock !== undefined ? JSON.parse(inStock) : product.inStock,
       });
 
       const stockMessage = product.inStock
@@ -580,5 +603,5 @@ module.exports = {
   getRewardById,
   updateReward,
   deleteReward,
-  getAllUsers,//{user}
+  getAllUsers, //{user}
 };

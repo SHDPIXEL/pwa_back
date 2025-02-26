@@ -268,9 +268,13 @@ const registerUser = async (req, res) => {
     // Handle code based on userType
     let userCode = code;
 
+    // Set initial points before use
+    let initialPoints = null;
+
     if (userType === "Doctor") {
-      userCode = generateCode(); // Generate a random code for the doctor
+      userCode = (await generateCode())?.toString(); // ✅ Fix: Ensure a string
       console.log(`Generated code for Doctor: ${userCode}`);
+      initialPoints = 500; // Doctors get 500 points
     } else if (userType !== "Doctor" && userType === "OtherUser" && code) {
       // Verify if the provided code belongs to a registered doctor
       const doctor = await User.findOne({
@@ -295,9 +299,6 @@ const registerUser = async (req, res) => {
         .status(400)
         .json({ message: "Code is required for OtherUsers" });
     }
-
-    // Set initial points for doctors
-    const initialPoints = userType === "Doctor" ? 500 : null; // Doctors start with 500 points
 
     // Hash password (if provided)
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
