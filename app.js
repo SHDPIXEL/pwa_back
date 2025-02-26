@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors"); // Import CORS middleware
+const path = require('path')
 require("./connection");
 
 
@@ -112,6 +113,9 @@ app.get("/", (req, res) => {
       </html>
     `);
 });
+
+// Serve static files from the "assets" folder
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 //Admin
 app.use("/api/auth", authRouteradmin);

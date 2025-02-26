@@ -25,7 +25,7 @@ const authenticateUser = async (req, res, next) => {
       id: user.id,
       userType: user.userType, // Consistent with your authentication logic
     };
-
+    console.log(id,userType)
     next(); // Proceed to the next middleware or route
   } catch (err) {
     return res

@@ -1,15 +1,17 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Payment = require("../models/payment");
+const CodeTracker = require("../models/randomCode");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 const nodemailer = require("nodemailer");
 const axios = require("axios"); // Import axios
+const jsSHA = require("jssha");
 
 // Temporary in-memory OTP store
 const otpStore = {};
-const senderIds = ["CELAGE"];
+const senderIds = ["CELAGE", "CELANX", "CELGNX"];
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
@@ -41,9 +43,11 @@ async function sendOtpViaSms(phone, otp) {
 
   const apiUrl =
     process.env.OTP_BASE_SEND +
-    `?username=celagenx&password=celagenx&senderid=${senderId}&message=${encodeURIComponent(message)}&numbers=${phone}`;
+    `?username=celagenx&password=celagenx&senderid=${senderId}&message=${encodeURIComponent(
+      message
+    )}&numbers=${phone}`;
 
-  console.log(process.env.OTP_BASE_SEND); 
+  console.log(process.env.OTP_BASE_SEND);
   try {
     const response = await axios.get(apiUrl);
     if (response.status === 200) {
@@ -59,12 +63,22 @@ async function sendOtpViaSms(phone, otp) {
   }
 }
 
-let currentNumber = 101; // Start from 101
+const generateCode = async () => {
+  try {
+    let tracker = await CodeTracker.findOne();
 
-const generateCode = () => {
-  const code = `BYZ${currentNumber}`;
-  currentNumber++; // Increment for the next code
-  return code;
+    if (!tracker) {
+      tracker = await CodeTracker.create({ latestNumber: 100 }); // Start from 100
+    }
+
+    tracker.latestNumber += 1;
+    await tracker.save();
+
+    return `BYZ${tracker.latestNumber}`;
+  } catch (error) {
+    console.error("Error generating code:", error);
+    throw new Error("Failed to generate code");
+  }
 };
 
 // Function to generate OTP (6-digit numeric)
@@ -76,22 +90,49 @@ const generateOTP = () => {
   });
 };
 
+const normalizeKey = (key) => key.trim().toLowerCase();
+
 // Function to store OTP with expiration
 const storeOTP = (key, otp) => {
+  key = normalizeKey(key);
   otpStore[key] = { otp, expiresAt: Date.now() + 5 * 60 * 1000 }; // Expires in 5 minutes
+
+  console.log(`OTP stored for ${key}:`, otpStore[key]); // Debugging
 
   // Auto-delete OTP after expiration
   setTimeout(() => {
+    console.log(`Deleting OTP for ${key} due to expiration.`);
     delete otpStore[key];
   }, 5 * 60 * 1000);
 };
 
 // Function to retrieve and validate OTP
 const validateOTP = (key, otp) => {
+  key = normalizeKey(key);
+  console.log(`Validating OTP for ${key}. Current OTP store:`, otpStore);
+
   const otpData = otpStore[key];
-  if (!otpData)
+
+  if (!otpData) {
+    console.log(`OTP for ${key} not found in store.`);
     return { valid: false, message: "OTP expired. Request a new OTP." };
-  if (otpData.otp !== otp) return { valid: false, message: "Invalid OTP." };
+  }
+
+  // Check expiration time
+  if (Date.now() > otpData.expiresAt) {
+    console.log(`OTP for ${key} has expired.`);
+    delete otpStore[key];
+    return { valid: false, message: "OTP expired. Request a new OTP." };
+  }
+
+  if (otpData.otp !== otp) {
+    console.log(
+      `Entered OTP (${otp}) does not match stored OTP (${otpData.otp}) for ${key}.`
+    );
+    return { valid: false, message: "Invalid OTP." };
+  }
+
+  console.log(`OTP for ${key} is valid. Verification successful.`);
   delete otpStore[key]; // Remove OTP after successful verification
   return { valid: true };
 };
@@ -101,8 +142,17 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const { name, phone, email, gender, status, userType, password, otp } =
-      req.body;
+    const {
+      name,
+      phone,
+      email,
+      gender,
+      status,
+      userType,
+      state,
+      password,
+      otp,
+    } = req.body;
 
     let { code } = req.body;
 
@@ -158,8 +208,16 @@ const registerUser = async (req, res) => {
     if (email && !otp) {
       const generatedOTP = generateOTP();
       storeOTP(email, generatedOTP);
-      await sendEmailOTP(email, generatedOTP);
-      return res.status(200).json({ message: "OTP sent to email", email });
+
+      try {
+        await sendEmailOTP(email, generatedOTP);
+        return res.status(200).json({ message: "OTP sent to email", email });
+      } catch (error) {
+        console.error("Error sending OTP via email:", error);
+        return res
+          .status(500)
+          .json({ message: "Failed to send OTP via email" });
+      }
     }
 
     let otpStatus = "not verified"; // Default status
@@ -230,6 +288,7 @@ const registerUser = async (req, res) => {
       console.log(
         `Code verification passed. User linked to Doctor with code: ${code}`
       );
+      initialPoints = 50; // Assign 50 reward points to OtherUser
     } else if (userType === "OtherUser" && !code) {
       console.log("Validation failed: No code provided for regular user.");
       return res
@@ -252,6 +311,7 @@ const registerUser = async (req, res) => {
       email,
       gender,
       status,
+      state,
       userType,
       code: userCode,
       points: initialPoints,
@@ -335,12 +395,14 @@ const loginUser = async (req, res) => {
       if (phone && !otp) {
         const generatedOTP = generateOTP();
         storeOTP(phone, generatedOTP);
-  
+
         try {
           await sendOtpViaSms(phone, generatedOTP);
           return res.status(200).json({ message: "OTP sent to phone", phone });
         } catch (error) {
-          return res.status(500).json({ message: "Failed to send OTP via SMS" });
+          return res
+            .status(500)
+            .json({ message: "Failed to send OTP via SMS" });
         }
       }
 
@@ -438,106 +500,199 @@ async function verifyUserToken(req, res, next) {
   }
 }
 
-const paymentController = async (req, res) => {
+const generatePaymentHash = (txnid, amount, productinfo, firstname, email) => {
+  if (!txnid || !amount || !productinfo || !firstname || !email) {
+    throw new Error("Mandatory fields missing");
+  }
+
+  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}||||||||||${process.env.PAYU_SALT}`;
+  const sha = new jsSHA("SHA-512", "TEXT");
+  sha.update(hashString);
+  return sha.getHash("HEX");
+};
+
+// Function to process payment
+const processPayment = async (req, res) => {
   try {
-    const { txnid, amount, productinfo, firstname, email } = req.body;
+    console.log("Received request body:", req.body);
+    const { txnid, amount, productinfo, firstname, email, phone, surl, furl } =
+      req.body;
 
-    const key = process.env.PAYU_KEY;
-    const salt = process.env.PAYU_SALT;
-    const surl = process.env.SUCCESS_URL;
-    const furl = process.env.FAILURE_URL;
-    const payu_url = process.env.PAYU_API_URL; // e.g., https://secure.payu.in/_payment
-
+    // Check for missing fields
     if (!txnid || !amount || !productinfo || !firstname || !email) {
-      return res.status(400).json({ error: "All fields are required" });
+      return res.status(400).json({ error: "Mandatory fields missing" });
     }
 
-    // Generate hash
-    const hashString = `${key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|||||||||||${salt}`;
-    const hash = crypto.createHash("sha512").update(hashString).digest("hex");
+    // Generate hash correctly
+    const hash = generatePaymentHash(
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email
+    );
 
-    // Store payment in DB with "pending" status
-    const newPayment = new Payment({
+    // Return HTML form for PayU redirect (PayU expects a form submission)
+    const payuForm = `
+       <form id="payuForm" action="${process.env.PAYU_API_URL}" method="POST">
+         <input type="hidden" name="key" value="${process.env.PAYU_KEY}" />
+         <input type="hidden" name="txnid" value="${txnid}" />
+         <input type="hidden" name="amount" value="${amount}" />
+         <input type="hidden" name="productinfo" value="${productinfo}" />
+         <input type="hidden" name="firstname" value="${firstname}" />
+         <input type="hidden" name="email" value="${email}" />
+         <input type="hidden" name="phone" value="${phone || ""}" />
+         <input type="hidden" name="surl" value="${surl}" />
+         <input type="hidden" name="furl" value="${furl}" />
+         <input type="hidden" name="hash" value="${hash}" />
+         <input type="hidden" name="service_provider" value="payu_paisa" />
+       </form>
+       <script>document.getElementById("payuForm").submit();</script>
+     `;
+
+    res.send(payuForm);
+  } catch (err) {
+    console.error("Error in processing payment:", err);
+    res.status(500).json({ error: "Error processing payment" });
+  }
+};
+
+// Function to handle payment verification and save in DB
+const verifyPayment = async (req, res) => {
+  try {
+    // Extract the token from headers
+    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET); // Ensure JWT_SECRET is set in your environment variables
+    const userId = decoded.userId; // Extract userId from the token
+
+    // Extract payment details from request body
+    const {
       txnid,
       amount,
       productinfo,
       firstname,
       email,
-      status: "pending", // Initial status before payment completion
-    });
-
-    await newPayment.save();
-
-    // Create payload
-    const payuPayload = {
-      key,
-      txnid,
-      amount,
-      productinfo,
-      firstname,
-      email,
-      surl,
-      furl,
+      status,
+      mihpayid,
       hash,
-      service_provider: "payu_paisa",
-    };
+    } = req.body;
 
-    return res.json({ payu_url, payuPayload });
-  } catch (error) {
-    console.error("Payment Error:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-};
+    // Validate PayU hash
+    const reverseHashString = `${process.env.PAYU_SALT}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${process.env.PAYU_KEY}`;
+    const sha = new jsSHA("SHA-512", "TEXT");
+    sha.update(reverseHashString);
+    const expectedHash = sha.getHash("HEX");
 
-const successController = async (req, res) => {
-  try {
-    const { txnid, status } = req.body;
-
-    // Verify the payment
-    const payment = await Payment.findOne({ txnid });
-
-    if (!payment) {
-      return res.status(404).json({ error: "Transaction not found" });
+    if (expectedHash !== hash) {
+      console.error("Invalid hash from PayU");
+      return res.status(400).json({ error: "Invalid hash" });
     }
 
-    // Update payment status
-    payment.status = status === "success" ? "completed" : "failed";
-    await payment.save();
+    if (status === "success") {
+      await Payment.create({
+        userId, // Associate payment with user
+        txnid,
+        amount,
+        productinfo,
+        firstname,
+        email,
+        payuId: mihpayid, // Store PayU transaction ID
+        status: "completed",
+      });
 
-    res.json({ message: "Payment Successful", payment });
-  } catch (error) {
-    console.error("Success Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-
-const failureController = async (req, res) => {
-  try {
-    const { txnid, status } = req.body;
-
-    // Find the payment
-    const payment = await Payment.findOne({ txnid });
-
-    if (!payment) {
-      return res.status(404).json({ error: "Transaction not found" });
+      // return res.send({
+      //   status: "success",
+      //   transaction_id: `Your transaction ID is: ${txnid}. Kindly save it for any further queries.`,
+      //   message:
+      //     "Congratulations! You'll receive an acknowledgment email shortly.",
+      // });      // Redirect to frontend ThankYouPage
+      res.redirect("http://localhost:3000/thankyou"); // Adjust to your frontend URL
+    } else {
+      await Payment.create({
+        userId, // Associate payment with user
+        txnid,
+        amount,
+        productinfo,
+        firstname,
+        email,
+        payuId: mihpayid, // Store PayU transaction ID
+        status: "failed",
+      });
+      // Redirect to home page
+      res.redirect("http://localhost:3000/"); // Adjust to your frontend URL
+      // return res.send({
+      //   status: "failed",
+      //   message: "Payment is not successful",
+      // });
     }
-
-    // Mark as failed
-    payment.status = status === "failed" ? "failed" : "";
-    await payment.save();
-
-    res.json({ message: "Payment Failed", payment });
-  } catch (error) {
-    console.error("Failure Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+  } catch (err) {
+    console.error("Error in verifying payment:", err);
+    return res.status(500).send("Error in verifying payment");
   }
 };
+
+// // Verify Payment and Redirect
+// const verifyPayment = async (req, res) => {
+//   try {
+//     const { txnid, amount, productinfo, firstname, email, status, mihpayid, hash } = req.body;
+
+//     // Validate PayU hash
+//     const reverseHashString = ${process.env.SALT}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${process.env.KEY};
+//     const sha = new jsSHA("SHA-512", "TEXT");
+//     sha.update(reverseHashString);
+//     const expectedHash = sha.getHash("HEX");
+
+//     if (expectedHash !== hash) {
+//       console.error("Invalid hash from PayU");
+//       return res.status(400).json({ error: "Invalid hash" });
+//     }
+
+//     // Assuming userId is optional or fetched from your DB if needed
+//     const userId = "some-user-id"; // Replace with actual logic if required
+
+//     if (status === "success") {
+//       await Payment.create({
+//         userId,
+//         txnid,
+//         amount,
+//         productinfo,
+//         firstname,
+//         email,
+//         payuId: mihpayid,
+//         status: "completed",
+//       });
+//       // Redirect to frontend ThankYouPage
+//       res.redirect("http://localhost:3000/thankyou"); // Adjust to your frontend URL
+//     } else {
+//       await Payment.create({
+//         userId,
+//         txnid,
+//         amount,
+//         productinfo,
+//         firstname,
+//         email,
+//         payuId: mihpayid,
+//         status: "failed",
+//       });
+//       // Redirect to home page
+//       res.redirect("http://localhost:3000/"); // Adjust to your frontend URL
+//     }
+//   } catch (err) {
+//     console.error("Error in verifying payment:", err);
+//     res.status(500).redirect("http://localhost:3000/"); // Redirect on error
+//   }
+// };
 
 module.exports = {
   registerUser,
   loginUser,
   verifyUserToken,
-  paymentController,
-  successController,
-  failureController,
+  generatePaymentHash,
+  processPayment,
+  verifyPayment,
 };

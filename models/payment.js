@@ -1,73 +1,90 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../connection");
+const User = require("./user");
 
-const Payment = sequelize.define("Payment", {
-  id: {
-    type: DataTypes.INTEGER,
-    autoIncrement: true,
-    primaryKey: true,
-  },
-  txnid: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-    validate: {
-      notEmpty: {
-        msg: "Transaction ID cannot be empty",
+const Payment = sequelize.define(
+  "Payment",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    userId: {
+      // Foreign key reference to User
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
       },
     },
-  },
-  amount: {
-    type: DataTypes.FLOAT,
-    allowNull: false,
-    validate: {
-      notEmpty: {
-        msg: "Amount cannot be empty",
-      },
-      min: {
-        args: [0.01],
-        msg: "Amount must be greater than 0",
+    txnid: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+      validate: {
+        notEmpty: {
+          msg: "Transaction ID cannot be empty",
+        },
       },
     },
-  },
-  productinfo: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: {
-        msg: "Product info cannot be empty",
+    amount: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+      validate: {
+        notEmpty: {
+          msg: "Amount cannot be empty",
+        },
+        min: {
+          args: [0.01],
+          msg: "Amount must be greater than 0",
+        },
       },
     },
-  },
-  firstname: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      notEmpty: {
-        msg: "First name cannot be empty",
+    productinfo: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notEmpty: {
+          msg: "Product info cannot be empty",
+        },
       },
     },
-  },
-  email: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      isEmail: {
-        msg: "Invalid email format",
-      },
-      notEmpty: {
-        msg: "Email cannot be empty",
+    firstname: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notEmpty: {
+          msg: "First name cannot be empty",
+        },
       },
     },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        isEmail: {
+          msg: "Invalid email format",
+        },
+        notEmpty: {
+          msg: "Email cannot be empty",
+        },
+      },
+    },
+    payuId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    status: {
+      type: DataTypes.ENUM("pending", "completed", "failed"),
+      defaultValue: "pending",
+    },
   },
-  status: {
-    type: DataTypes.ENUM("pending", "completed", "failed"),
-    defaultValue: "pending",
-  },
-},
-{
-  timestamps: true, // Adds createdAt and updatedAt fields
-});
+  {
+    timestamps: true, // Adds createdAt and updatedAt fields
+  }
+);
 
 // Sync model with database
 (async () => {

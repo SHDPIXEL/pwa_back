@@ -53,6 +53,12 @@ const User = sequelize.define(
         return this.userType === "Doctor"; // Only applicable for doctors
       },
     },
+    state: {
+      type: DataTypes.STRING,
+      allowNull: function () {
+        return this.userType === "Doctor"; // Required for Doctor
+      },
+    },
     password: {
       type: DataTypes.STRING,
       allowNull: true,

@@ -126,7 +126,9 @@ const getChallengesByDoctor = async (req, res) => {
     });
 
     if (!challenges.length) {
-      return res.status(404).json({ error: "No challenges found for this week" });
+      return res
+        .status(404)
+        .json({ error: "No challenges found for this week" });
     }
 
     return res.status(200).json(challenges);
@@ -178,27 +180,64 @@ const getAllProducts = async (req, res) => {
 
 const submitChallengeForm = async (req, res) => {
   try {
-    const uploadPath = req.body.mediaType === "images" 
-      ? "assets/images/challengesForm" 
-      : "assets/videos/challengesForm";
+    // Extract token from headers
+    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
 
+    // Verify and decode the token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Decoded Token user:", decoded); // Debugging Log
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    const userId = decoded?.id;
+
+    // Debugging: Check if userId is valid
+    if (!userId) {
+      console.error("Error: userId is undefined in token");
+      return res.status(400).json({ error: "Invalid token, userId missing" });
+    }
+
+    // Define upload path based on media type
+    const uploadPath =
+      req.body.mediaType === "images"
+        ? "assets/images/challengesForm"
+        : "assets/videos/challengesForm";
+
+    // Handle media upload
     uploadMedia(uploadPath).array("mediaFiles", 5)(req, res, async (err) => {
       if (err) {
-        return res.status(400).json({ error: `File upload error: ${err.message}` });
+        return res
+          .status(400)
+          .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, phone, remark, mediaType } = req.body;
-      
+      const { name, phone, remark, mediaType, challengeId } = req.body;
+
+      // Validate required fields
       if (!name || !phone || !mediaType) {
-        return res.status(400).json({ error: "Name, phone, and media type are required" });
+        return res
+          .status(400)
+          .json({ error: "Name, phone, and media type are required" });
       }
 
       if (!["images", "video"].includes(mediaType)) {
-        return res.status(400).json({ error: "Invalid media type. Allowed: images, video" });
+        return res
+          .status(400)
+          .json({ error: "Invalid media type. Allowed: images, video" });
       }
 
-      const mediaFiles = req.files ? req.files.map(file => `${uploadPath}/${file.filename}`) : [];
-      
+      // Collect uploaded media file paths
+      const mediaFiles = req.files
+        ? req.files.map((file) => `${uploadPath}/${file.filename}`)
+        : [];
+
+      // Validate media file limits
       if (mediaType === "images" && mediaFiles.length > 5) {
         return res.status(400).json({ error: "Maximum 5 images allowed." });
       }
@@ -207,12 +246,26 @@ const submitChallengeForm = async (req, res) => {
         return res.status(400).json({ error: "Only 1 video is allowed." });
       }
 
+      // Debugging: Log all values before saving
+      console.log("Saving challenge with values:", {
+        userId,
+        name,
+        phone,
+        remark,
+        mediaType,
+        mediaFiles,
+        challengeId
+      });
+
+      // Create challenge submission with user ID
       const challengeSubmission = await ChallengeSubmitForm.create({
+        userId, // Associate submission with the user
         name,
         phone,
         remark,
         mediaType,
         mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
+        challengeId
       });
 
       res.status(201).json({
@@ -228,13 +281,73 @@ const submitChallengeForm = async (req, res) => {
 
 const getChallengeForm = async (req, res) => {
   try {
-    const challenges = await ChallengeSubmitForm.findAll();
-    res.status(200).json(challenges);
+    // Extract token from headers
+    const token = req.headers.authorization?.split(" ")[1]; 
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+    console.log("Extracted Token:", token);
+
+    // Verify token and get userId
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Decoded Token:", decoded);
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    const userId = decoded?.id; // Extract userId
+    console.log("Extracted userId:", userId);
+    if (!userId) {
+      return res.status(400).json({ error: "Invalid token, userId missing" });
+    }
+
+    // Step 1: Find all challenges for this user
+    const userChallenges = await ChallengeSubmitForm.findAll({
+      where: { userId },
+      attributes: ["challengeId"], // Get only challengeId
+    });
+    console.log("User Challenges:", userChallenges);
+
+    if (!userChallenges.length) {
+      return res.status(404).json({ error: "No challenges found for this user" });
+    }
+
+    const challengeIds = userChallenges.map(challenge => challenge.challengeId);
+    console.log("Challenge IDs:", challengeIds);
+
+    // Step 2: Find weekIds from challenges
+    const weeks = await Challenges.findAll({
+      where: { id: challengeIds },
+      attributes: ["weekId"],
+    });
+    console.log("Fetched Weeks:", weeks);
+
+    if (!weeks.length) {
+      return res.status(404).json({ error: "No weeks found for the challenges" });
+    }
+
+    const weekIds = weeks.map(week => week.weekId);
+    console.log("Week IDs:", weekIds);
+
+    // Step 3: Find forms for the retrieved weekIds
+    const forms = await ChallengeSubmitForm.findAll({
+      where: { weekId: weekIds },
+    });
+    console.log("Fetched Forms:", forms);
+
+    if (!forms.length) {
+      return res.status(404).json({ error: "No forms found for the weeks" });
+    }
+
+    res.status(200).json(forms);
   } catch (error) {
-    console.error("Error fetching challenges:", error);
+    console.error("Error fetching challenge forms:", error);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
+
 
 const getChallengeFormById = async (req, res) => {
   try {
@@ -251,14 +364,27 @@ const getChallengeFormById = async (req, res) => {
         return res.status(401).json({ error: "Invalid or expired token" });
       }
 
+      // Debugging: Log the decoded token
+      console.log("Decoded Token get user:", decoded);
+
       // Extract user ID from the decoded token
-      const LoggedUser = decoded.userId;
+      const LoggedUser = decoded?.id;
+
+      // Debugging: Check if userId exists
+      if (!LoggedUser) {
+        console.error("Error: userId is undefined in token");
+        return res.status(400).json({ error: "Invalid token, userId missing" });
+      }
 
       // Find the challenge form associated with the logged-in user
-      const challenge = await ChallengeSubmitForm.findAll ();
+      const challenge = await ChallengeSubmitForm.findAll({
+        where: { userId: LoggedUser }, // Fetch records specific to the user
+      });
 
-      if (!challenge) {
-        return res.status(404).json({ error: "Challenge not found for this user" });
+      if (!challenge || challenge.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "Challenge not found for this user" });
       }
 
       res.status(200).json(challenge);
@@ -284,33 +410,53 @@ const updateChallengeForm = async (req, res) => {
         return res.status(401).json({ error: "Invalid or expired token" });
       }
 
+      // Debugging: Log the decoded token
+      console.log("Decoded Token get user:", decoded);
+
       // Extract user ID from the decoded token
-      const LoggedUser = decoded.userId;
+      const LoggedUser = decoded?.id;
+
+      // Debugging: Check if userId exists
+      if (!LoggedUser) {
+        console.error("Error: userId is undefined in token");
+        return res.status(400).json({ error: "Invalid token, userId missing" });
+      }
 
       // Find the challenge form associated with the logged-in user
-      const challenge = await ChallengeSubmitForm.findOne({ where: { userId: LoggedUser } });
+      const challenge = await ChallengeSubmitForm.findOne({
+        where: { userId: LoggedUser },
+      });
 
       if (!challenge) {
-        return res.status(404).json({ error: "Challenge not found for this user" });
+        return res
+          .status(404)
+          .json({ error: "Challenge not found for this user" });
       }
 
       // Determine upload path based on media type
-      const uploadPath = req.body.mediaType === "images" 
-        ? "assets/images/challengesForm" 
-        : "assets/videos/challengesForm";
+      const uploadPath =
+        req.body.mediaType === "images"
+          ? "assets/images/challengesForm"
+          : "assets/videos/challengesForm";
 
       uploadMedia(uploadPath).array("mediaFiles", 5)(req, res, async (err) => {
         if (err) {
-          return res.status(400).json({ error: `File upload error: ${err.message}` });
+          return res
+            .status(400)
+            .json({ error: `File upload error: ${err.message}` });
         }
 
         const { name, phone, remark, mediaType } = req.body;
 
         if (mediaType && !["images", "video"].includes(mediaType)) {
-          return res.status(400).json({ error: "Invalid media type. Allowed: images, video" });
+          return res
+            .status(400)
+            .json({ error: "Invalid media type. Allowed: images, video" });
         }
 
-        const mediaFiles = req.files ? req.files.map(file => `${uploadPath}/${file.filename}`) : [];
+        const mediaFiles = req.files
+          ? req.files.map((file) => `${uploadPath}/${file.filename}`)
+          : [];
 
         if (mediaType === "images" && mediaFiles.length > 5) {
           return res.status(400).json({ error: "Maximum 5 images allowed." });
@@ -326,7 +472,10 @@ const updateChallengeForm = async (req, res) => {
           phone: phone || challenge.phone,
           remark: remark || challenge.remark,
           mediaType: mediaType || challenge.mediaType,
-          mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : challenge.mediaFiles,
+          mediaFiles:
+            mediaFiles.length > 0
+              ? JSON.stringify(mediaFiles)
+              : challenge.mediaFiles,
         });
 
         res.status(200).json({
@@ -360,26 +509,25 @@ const deleteChallengeForm = async (req, res) => {
       const LoggedUser = decoded.userId;
 
       // Find the challenge form associated with the logged-in user
-      const challenge = await ChallengeSubmitForm.findOne({ where: { userId: LoggedUser } });
+      const challenge = await ChallengeSubmitForm.findOne({
+        where: { userId: LoggedUser },
+      });
 
       if (!challenge) {
-        return res.status(404).json({ error: "Challenge not found for this user" });
+        return res
+          .status(404)
+          .json({ error: "Challenge not found for this user" });
       }
 
       // Delete the challenge
       await challenge.destroy();
       res.status(200).json({ message: "Challenge deleted successfully" });
-
     });
   } catch (error) {
     console.error("Error deleting challenge:", error);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
-
-const paymentController = async (req, res) => {
-  
-}
 
 module.exports = {
   getUserdetailsById,
@@ -390,5 +538,5 @@ module.exports = {
   getChallengeForm,
   getChallengeFormById,
   updateChallengeForm,
-  deleteChallengeForm
+  deleteChallengeForm,
 };

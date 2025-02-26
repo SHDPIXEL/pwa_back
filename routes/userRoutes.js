@@ -29,7 +29,7 @@ router.get("/challenges/:weekId", getChallengesByDoctor);
 //create
 router.post("/challengeForm",submitChallengeForm)
 //getAllchallenges
-router.get("/challengeForms",getChallengeForm)
+router.get("/allchallengeForms",getChallengeForm)
 //getChallengesById
 router.get("/get/challengeForm",getChallengeFormById)
 //updateChallenge

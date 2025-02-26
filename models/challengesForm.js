@@ -1,6 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../connection");
 const User = require("../models/user");
+const Challenges = require("../models/challenges");
 
 const ChallengeSubmitForm = sequelize.define(
   "ChallengeSubmitForm",
@@ -11,15 +12,24 @@ const ChallengeSubmitForm = sequelize.define(
       primaryKey: true,
       allowNull: false,
     },
-    // userId: {
-    //   // Foreign key reference to User
-    //   type: DataTypes.INTEGER,
-    //   allowNull: false,
-    //   references: {
-    //     model: User,
-    //     key: "id",
-    //   },
-    // },
+    userId: {
+      // Foreign key reference to User
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    challengeId: {
+      // Foreign key reference to User
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: Challenges,
+        key: "id",
+      },
+    },
     name: {
       type: DataTypes.STRING,
       allowNull: false,
