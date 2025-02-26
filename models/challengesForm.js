@@ -77,7 +77,7 @@ const ChallengeSubmitForm = sequelize.define(
 // Sync with error handling
 (async () => {
   try {
-    await ChallengeSubmitForm.sync({ force: false });
+    await ChallengeSubmitForm.sync({ force: true });
     console.log("The table for the Agent model was just (re)created!");
   } catch (error) {
     console.error("Error syncing the Agent model:", error);
