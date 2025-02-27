@@ -9,6 +9,7 @@ const nodemailer = require("nodemailer");
 const axios = require("axios"); // Import axios
 const jsSHA = require("jssha");
 
+
 // Temporary in-memory OTP store
 const otpStore = {};
 const senderIds = ["CELAGE", "CELANX", "CELGNX"];
@@ -22,17 +23,86 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const sendEmailOTP = async (email, otp) => {
+const sendEmailOTP = async (email, otp, name = "User", userType) => {
   try {
+    if (!email) {
+      throw new Error("Recipient email is missing or invalid.");
+    }
+
+    let prefixedName = name;
+    if (name !== "User") {
+      if (userType === "Doctor") {
+        prefixedName = `Dr. ${name}`;
+      } else if (userType === "OtherUser") {
+        prefixedName = `Mr. ${name}`;
+      }
+    }
+
+    const emailTemplate = `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Your OTP Code</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" />
+      </head>
+      <body style="margin: 0; font-family: 'Poppins', sans-serif; background: #ffffff; font-size: 14px;">
+        <div style="max-width: 680px; margin: 0 auto; padding: 45px 30px 60px; background: linear-gradient(135deg, #f9e0c2, #f7941d); font-size: 14px; color: #434343;">
+          <header>
+            <table style="width: 100%;">
+              <tbody>
+                <tr>
+                  <td>
+                    <img alt="Breboot Logo" src="YOUR_SVG_URL_HERE" height="30px"/>
+                  </td>
+                  <td style="text-align: right;">
+                    <span style="font-size: 16px; line-height: 30px; color: #ffffff;">${new Date().toDateString()}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </header>
+          <main>
+            <div style="margin: 0; margin-top: 70px; padding: 92px 30px 115px; background: #ffffff; border-radius: 30px; text-align: center; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);">
+              <div style="width: 100%; max-width: 489px; margin: 0 auto;">
+                <h1 style="margin: 0; font-size: 28px; font-weight: 500; color: #1f1f1f;">Your OTP</h1>
+                <p style="margin: 0; margin-top: 17px; font-size: 20px; font-weight: 500; color: #434343">Hey ${prefixedName},</p>
+                <p style="margin: 0; margin-top: 17px; font-size:16px; font-weight: 500; letter-spacing: 0.56px; color: #434343">
+                  Thank you for choosing <span style="font-weight: 600; color: #1f1f1f;">Breboot</span>. Use the following OTP to verify your Email.
+                  This OTP is valid for <span style="font-weight: 600; color: #1f1f1f;">5 minutes</span>.
+                  Please do not share this code with anyone.
+                </p>
+                <div style="display: flex; justify-content: center; align-items: center; margin-top: 60px;">
+                  <p style="margin: 0; font-size: 40px; font-weight: 600; text-align: center; color: #f7941d; word-spacing: 12px;">
+                    ${otp.split("").join(" ")}
+                  </p>  
+                </div>
+              </div>
+            </div>
+          </main>
+          <footer style="width: 100%; max-width: 490px; margin: 20px auto 0; margin-top: 70px; text-align: center; border-top: 1px solid #e6ebf1;">
+            <p style="margin: 0; margin-top: 40px; font-size: 16px; font-weight: 600; color: #434343;">
+              <img alt="Breboot Logo" src="YOUR_SVG_URL_HERE" height="30px"/>
+            </p>
+            <p style="margin: 0; margin-top: 16px; color: #434343;">&copy; ${new Date().getFullYear()} Breboot. All rights reserved.</p>
+          </footer>
+        </div>
+      </body>
+    </html>`;
+
+    console.log(`Sending OTP email to: ${email}`);
+
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: "Your OTP Code",
-      text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+      html: emailTemplate,
     });
-    console.log(`OTP sent to email: ${email}`);
+
+    console.log(`OTP successfully sent to ${email}`);
   } catch (error) {
-    console.error("Error sending OTP email:", error);
+    console.error("Error sending OTP email:", error.message);
   }
 };
 
@@ -47,7 +117,6 @@ async function sendOtpViaSms(phone, otp) {
       message
     )}&numbers=${phone}`;
 
-  console.log(process.env.OTP_BASE_SEND);
   try {
     const response = await axios.get(apiUrl);
     if (response.status === 200) {
@@ -210,7 +279,7 @@ const registerUser = async (req, res) => {
       storeOTP(email, generatedOTP);
 
       try {
-        await sendEmailOTP(email, generatedOTP);
+        await sendEmailOTP(email, generatedOTP, name ,userType);
         return res.status(200).json({ message: "OTP sent to email", email });
       } catch (error) {
         console.error("Error sending OTP via email:", error);

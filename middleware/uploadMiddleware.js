@@ -8,26 +8,26 @@ const storage = (type) =>
       let uploadPath = "";
 
       if (file.mimetype.startsWith("image")) {
-        // Image Paths
-        switch (type) {
-          case "challenges":
-            uploadPath = "assets/images/challenges";
-            break;
-          case "challengesForm":
-            uploadPath = "assets/images/challengesForm";
-            break;
-          case "products":
-            uploadPath = "assets/images/products";
-            break;
-          case "rewards":
-            uploadPath = "assets/images/rewards";
-            break;
-          default:
-            uploadPath = "assets/images"; // Default image path
-            break;
+        // Fix the "challengesForm" case to match "images"
+        if (type === "challengesForm" || type === "images") {
+          uploadPath = "assets/images/challengesForm";
+        } else {
+          switch (type) {
+            case "challenges":
+              uploadPath = "assets/images/challenges";
+              break;
+            case "products":
+              uploadPath = "assets/images/products";
+              break;
+            case "rewards":
+              uploadPath = "assets/images/rewards";
+              break;
+            default:
+              uploadPath = "assets/images"; // Default image path
+              break;
+          }
         }
       } else if (file.mimetype.startsWith("video")) {
-        // Video Paths
         switch (type) {
           case "challengesForm":
             uploadPath = "assets/videos/challengesForm";

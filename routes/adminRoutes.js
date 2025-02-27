@@ -18,11 +18,14 @@ const {
   updateProduct,
   deleteProduct,
   createReward, //{Rewards}
+  getAllRedeems,//{redeem}
   getAllRewards,
   getRewardById,
   updateReward,
   deleteReward,
   getAllUsers,//{user}
+  getAllChallengeForms,//{ChallengeForm}
+  updateChallengeForm,
 } = require("../controllers/adminController");
 
 //{verify middleware}
@@ -76,8 +79,18 @@ router.put("/update/reward/:id",updateReward)
 //deleteProduct
 router.delete("/delete/reward/:id",deleteReward)
 
+//{redeem}
+//getAllRedeem
+router.get("/redeem",getAllRedeems)
+
 //{user}
 //getAllusers
 router.get("/users",getAllUsers)
+
+//{ChallengeForm}
+//getAllchallenges
+router.get("/challengeForms",getAllChallengeForms )
+//getChallengeFormById
+router.put("/get/challengeForm/:id", updateChallengeForm)
 
 module.exports = router;

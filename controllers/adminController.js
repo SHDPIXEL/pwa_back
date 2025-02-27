@@ -3,6 +3,7 @@ const Challenges = require("../models/challenges");
 const Products = require("../models/products");
 const Rewards = require("../models/rewards");
 const User = require("../models/user");
+const ChallengeSubmitForm = require("../models/challengesForm");
 const uploadImage = require("../middleware/uploadMiddleware");
 
 //{week}
@@ -574,13 +575,202 @@ const deleteReward = async (req, res) => {
 //getAllUsers
 const getAllUsers = async (req, res) => {
   try {
-    const users = await User.findAll();
-    res.status(200).json({ success: true, data: users });
+    // Fetch all users, excluding passwords for security
+    const users = await User.findAll({
+      attributes: { exclude: ["password"] }, // Exclude passwords from response
+    });
+
+    return res.status(200).json({
+      message: "Users fetched successfully",
+      users,
+    });
   } catch (error) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch users." });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+//{ChallengeForm}
+//getAllChallengeForm
+const getAllChallengeForms = async (req, res) => {
+  try {
+    // Fetch all challenge submissions
+    const allChallenges = await ChallengeSubmitForm.findAll({
+      attributes: [
+        "id",
+        "name",
+        "phone",
+        "remark",
+        "mediaType",
+        "mediaFiles",
+        "isVerified",
+        "createdAt",
+      ],
+      order: [["createdAt", "DESC"]], // Sort by latest submissions
+    });
+
+    if (!allChallenges.length) {
+      return res.status(404).json({ error: "No challengeForm found" });
+    }
+
+    console.log("All Challenges:", allChallenges);
+
+    res.status(200).json(allChallenges);
+  } catch (error) {
+    console.error("Error fetching all challenge forms:", error);
+    res.status(500).json({ error: `Server error: ${error.message}` });
+  }
+};
+
+//updateChallengeForm
+const updateChallengeForm = async (req, res) => {
+  try {
+    const uploadPath =
+      req.body.mediaType === "images"
+        ? "assets/images/challengesForm"
+        : "assets/videos/challengesForm";
+
+    uploadImage(uploadPath).array("mediaFiles", 5)(req, res, async (err) => {
+      if (err) {
+        return res
+          .status(400)
+          .json({ error: `File upload error: ${err.message}` });
+      }
+
+      console.log("Request Body:", req.body);
+      console.log("Uploaded Files:", req.files);
+
+      const { id } = req.params;
+      let { name, phone, remark, mediaType, isVerified } = req.body;
+
+      // Find the existing challenge submission
+      const challengeForm = await ChallengeSubmitForm.findByPk(id);
+      if (!challengeForm) {
+        return res
+          .status(404)
+          .json({ error: "Challenge submission not found" });
+      }
+
+      // Validate media type
+      if (mediaType && !["images", "video"].includes(mediaType)) {
+        return res
+          .status(400)
+          .json({ error: "Invalid media type. Allowed: images, video" });
+      }
+
+      let mediaFiles = challengeForm.mediaFiles
+        ? JSON.parse(challengeForm.mediaFiles)
+        : [];
+      if (req.files && req.files.length > 0) {
+        const newFiles = req.files.map(
+          (file) => `${uploadPath}/${file.filename}`
+        );
+        mediaFiles = [...mediaFiles, ...newFiles];
+      }
+
+      if (mediaType === "images" && mediaFiles.length > 5) {
+        return res.status(400).json({ error: "Maximum 5 images allowed." });
+      }
+
+      if (mediaType === "video" && mediaFiles.length > 1) {
+        return res.status(400).json({ error: "Only 1 video is allowed." });
+      }
+
+      // Convert isVerified to an integer
+      isVerified = parseInt(isVerified, 10);
+      console.log("Parsed isVerified:", isVerified, typeof isVerified);
+
+      // Handle challenge status update
+      if (isVerified === 2) {
+        challengeForm.status = "Rejected";
+      } else if (isVerified === 1) {
+        challengeForm.status = "Approved";
+
+        // ✅ Fetch the related challenge to get reward points
+        const challenge = await Challenges.findByPk(challengeForm.challengeId);
+        if (!challenge || !challenge.rewards) {
+          return res.status(400).json({ error: "Challenge rewards not found" });
+        }
+
+        const rewardPoints = parseInt(challenge.rewards, 10) || 0;
+
+        // ✅ Fetch the user
+        const user = await User.findByPk(challengeForm.userId);
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // ✅ Update points only for Doctors
+        if (user.userType === "Doctor") {
+          user.points += rewardPoints;
+          await user.save();
+        }
+      } else if (isVerified === 0) {
+        challengeForm.status = "Pending";
+      } else {
+        console.warn("Invalid isVerified value received:", isVerified);
+      }
+
+      challengeForm.isVerified = isVerified;
+      challengeForm.name = name || challengeForm.name;
+      challengeForm.phone = phone || challengeForm.phone;
+      challengeForm.remark = remark || challengeForm.remark;
+      challengeForm.mediaType = mediaType || challengeForm.mediaType;
+      challengeForm.mediaFiles =
+        mediaFiles.length > 0
+          ? JSON.stringify(mediaFiles)
+          : challengeForm.mediaFiles;
+
+      // Save updated challenge record
+      await challengeForm.save();
+
+      return res.status(200).json({
+        message: "Challenge updated successfully",
+        challengeForm,
+      });
+    });
+  } catch (error) {
+    console.error("Error updating challenge:", error);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+};
+
+//{Redeem}
+// Create a new redeem
+const getAllRedeems = async (req, res) => {
+  try {
+    // Fetch all redeems with user and reward details
+    const redeems = await Redeem.findAll({
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email"], // Fetch relevant user details
+        },
+        {
+          model: Rewards,
+          as: "reward",
+          attributes: ["id", "name", "points"], // Fetch relevant reward details
+        },
+      ],
+    });
+
+    if (!redeems.length) {
+      return res.status(404).json({ error: "No redemptions found" });
+    }
+
+    return res.status(200).json(redeems);
+  } catch (error) {
+    console.error("Error fetching redemptions:", error);
+    return res
+      .status(500)
+      .json({ error: `Error fetching redemptions: ${error.message}` });
+  }
+};
+
 
 module.exports = {
   createWeek, //{weeks}
@@ -599,9 +789,12 @@ module.exports = {
   updateProduct,
   deleteProduct,
   createReward, //{Rewards}
+  getAllRedeems,//{redeem}
   getAllRewards,
   getRewardById,
   updateReward,
   deleteReward,
   getAllUsers, //{user}
+  getAllChallengeForms, //{ChallengeForm}
+  updateChallengeForm,
 };

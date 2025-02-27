@@ -4,7 +4,10 @@ const Week = require("../models/weeks");
 const Challenges = require("../models/challenges");
 const Products = require("../models/products");
 const ChallengeSubmitForm = require("../models/challengesForm");
+const Rewards = require("../models/rewards");
+const Redeem = require("../models/redeem");
 const uploadMedia = require("../middleware/uploadMiddleware");
+const { logger } = require("sequelize/lib/utils/logger");
 
 const getUserdetailsById = async (req, res) => {
   try {
@@ -35,6 +38,85 @@ const getUserdetailsById = async (req, res) => {
     return res
       .status(500)
       .json({ error: `Error fetching user: ${error.message}` });
+  }
+};
+
+const updateUser = async (req, res) => {
+  try {
+    // Extract token from headers
+    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Verify and decode the token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Decoded Token user:", decoded);
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    const userId = decoded?.id; // Extract userId from the token
+    if (!userId) {
+      return res.status(400).json({ error: "Invalid token, userId missing" });
+    }
+
+    // Find user by extracted userId
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ["password"] }, // Exclude password from retrieval
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Extract fields from request body
+    const { name, phone, email, gender, status, state } = req.body;
+
+    // Validate status
+    if (status && !["Active", "Inactive"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    // Validate email uniqueness if updating
+    if (email && email !== user.email) {
+      const emailExists = await User.findOne({ where: { email } });
+      if (emailExists) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+    }
+
+    // Validate phone uniqueness if updating
+    if (phone && phone !== user.phone) {
+      const phoneExists = await User.findOne({ where: { phone } });
+      if (phoneExists) {
+        return res.status(400).json({ error: "Phone number already in use" });
+      }
+    }
+    // Log old values before updating
+    console.log("Before update:", user.toJSON());
+
+    // Update user fields (excluding password)
+    await user.update({
+      name: name || user.name,
+      phone: phone || user.phone,
+      email: email || user.email,
+      gender: gender || user.gender,
+      status: status || user.status,
+      state: state || user.state,
+    });
+    // Refresh user from DB
+    await user.reload();
+
+    // Debugging: Log new values after update
+    console.log("After update:", user.toJSON());
+
+    return res.status(200).json({ message: "User updated successfully", user });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -192,6 +274,171 @@ const getAllProducts = async (req, res) => {
   }
 };
 
+const getAllRewards = async (req, res) => {
+  try {
+    // Extract token from Authorization header
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      return res.status(403).json({ error: "Token is required" });
+    }
+
+    // Verify the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Extract user ID from the decoded token
+    const userId = decoded.id;
+
+    // Find the user in the database
+    const user = await User.findOne({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(403).json({ error: "Access denied. User not found." });
+    }
+
+    // Fetch all rewards with redemption count
+    const rewards = await Rewards.findAll({
+      include: [
+        {
+          model: Redeem,
+          as: "redemptions", // Must match alias in models/index.js
+          attributes: ["id"],
+        },
+      ],
+    });
+
+    if (!rewards.length) {
+      return res.status(404).json({ error: "No rewards found" });
+    }
+
+    // Format rewards to include redemption count
+    const formattedRewards = rewards.map((reward) => ({
+      ...reward.toJSON(),
+      redeemedCount: reward.redemptions ? reward.redemptions.length : 0,
+    }));
+
+    return res.status(200).json(formattedRewards);
+  } catch (error) {
+    console.error("Error fetching rewards:", error);
+    return res
+      .status(500)
+      .json({ error: `Error fetching rewards: ${error.message}` });
+  }
+};
+
+const redeemReward = async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      return res.status(403).json({ error: "Token is required" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded?.id;
+
+    const { rewardId } = req.body;
+
+    if (!rewardId) {
+      return res.status(400).json({ error: "Reward ID is required" });
+    }
+
+    // Check if the reward exists
+    const reward = await Rewards.findOne({ where: { id: rewardId } });
+
+    if (!reward) {
+      return res.status(404).json({ error: "Reward not found" });
+    }
+
+    // Fetch user details
+    const user = await User.findOne({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if the user has enough points
+    if (user.points < reward.points) {
+      return res
+        .status(400)
+        .json({ error: "Your points are less than the reward points, so you can't redeem the reward." });
+    }
+
+    // Deduct reward points from the user
+    await user.update({ points: user.points - reward.points });
+
+    // Create redemption entry
+    const redemption = await Redeem.create({ userId, rewardId });
+
+    return res.status(201).json({
+      message: "Reward redeemed successfully",
+      remainingPoints: user.points - reward.points,
+      redemption,
+    });
+  } catch (error) {
+    console.error("Error redeeming reward:", error);
+    return res
+      .status(500)
+      .json({ error: `Error redeeming reward: ${error.message}` });
+  }
+};
+
+const getUserRedeemedRewards = async (req, res) => {
+  try {
+    // Get token from headers
+    const token = req.headers.authorization?.split(" ")[1];
+
+    if (!token) {
+      return res.status(403).json({ error: "Token is required" });
+    }
+
+    // Decode the token to get userId
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    // Check if the user exists
+    const user = await User.findOne({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Find the rewards the user has redeemed
+    const redeemedRewards = await Redeem.findAll({
+      where: { userId },
+      include: [{
+        model: Rewards,
+        as: 'reward',  // Use alias 'reward' here
+        attributes: ["id", "name", "description", "reward_image", "points"],  // Add description and reward_image here
+      }],
+    });
+
+    // If no rewards have been redeemed by the user
+    if (redeemedRewards.length === 0) {
+      return res.status(200).json({
+        message: "User has not redeemed any rewards.",
+        redeemedRewardIds: [],
+        redeemedRewardDetails: [],
+      });
+    }
+
+    // Get the IDs of the redeemed rewards
+    const redeemedRewardIds = redeemedRewards.map(redeem => redeem.reward.id);
+
+    // Get the details of the redeemed rewards
+    const redeemedRewardDetails = redeemedRewards.map(redeem => redeem.reward);
+
+    return res.status(200).json({
+      message: "User has redeemed the following rewards.",
+      redeemedRewardIds,    // Array of reward IDs
+      redeemedRewardDetails,  // Array of reward details
+    });
+  } catch (error) {
+    console.error("Error fetching redeemed rewards:", error);
+    return res.status(500).json({ error: `Error fetching redeemed rewards: ${error.message}` });
+  }
+};
+
 const submitChallengeForm = async (req, res) => {
   try {
     // Extract token from headers
@@ -231,7 +478,8 @@ const submitChallengeForm = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, phone, remark, mediaType, challengeId } = req.body;
+      const { name, phone, remark, mediaType, challengeId, isVerified } =
+        req.body;
 
       // Validate required fields
       if (!name || !phone || !mediaType) {
@@ -260,6 +508,8 @@ const submitChallengeForm = async (req, res) => {
         return res.status(400).json({ error: "Only 1 video is allowed." });
       }
 
+      const status = "Pending"; // ✅ Always set status to "Pending"
+
       // Debugging: Log all values before saving
       console.log("Saving challenge with values:", {
         userId,
@@ -269,6 +519,8 @@ const submitChallengeForm = async (req, res) => {
         mediaType,
         mediaFiles,
         challengeId,
+        isVerified: isVerified || false,
+        status,
       });
 
       // Create challenge submission with user ID
@@ -280,6 +532,8 @@ const submitChallengeForm = async (req, res) => {
         mediaType,
         mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
         challengeId,
+        isVerified: isVerified || false,
+        status,
       });
 
       res.status(201).json({
@@ -320,14 +574,14 @@ const getChallengeForm = async (req, res) => {
     // Step 1: Find all challenges for this user
     const userChallenges = await ChallengeSubmitForm.findAll({
       where: { userId },
-      attributes: ["challengeId"], // Get only challengeId
+      attributes: ["challengeId", "isVerified"], // Get only challengeId
     });
     console.log("User Challenges:", userChallenges);
 
     if (!userChallenges.length) {
       return res
         .status(404)
-        .json({ error: "No challenges found for this user",userChallenges });
+        .json({ error: "No challenges found for this user", userChallenges });
     }
 
     const challengeIds = userChallenges.map(
@@ -456,7 +710,7 @@ const updateChallengeForm = async (req, res) => {
             .json({ error: `File upload error: ${err.message}` });
         }
 
-        const { name, phone, remark, mediaType } = req.body;
+        const { name, phone, remark, mediaType, isVerified } = req.body;
 
         if (mediaType && !["images", "video"].includes(mediaType)) {
           return res
@@ -540,11 +794,15 @@ const deleteChallengeForm = async (req, res) => {
 };
 
 module.exports = {
-  getUserdetailsById,
-  getWeeksByDoctor,
-  getChallengesByDoctor,
-  getAllProducts,
-  submitChallengeForm,
+  getUserdetailsById, //{user}
+  updateUser,
+  getWeeksByDoctor, //{weeks}
+  getChallengesByDoctor, //{challenges}
+  getAllProducts, //{products}
+  getAllRewards, //{rewards}
+  redeemReward,//{redeem}
+  getUserRedeemedRewards,
+  submitChallengeForm, //{challengeform}
   getChallengeForm,
   getChallengeFormById,
   updateChallengeForm,

@@ -2,11 +2,15 @@ const express = require("express");
 const { verifyUserToken } = require("../controllers/authControlleruser");
 const router = express.Router();
 const {
-  getUserdetailsById,
-  getWeeksByDoctor,
-  getChallengesByDoctor,
-  getAllProducts,
-  submitChallengeForm,
+  getUserdetailsById,//{user}
+  updateUser,
+  getWeeksByDoctor,//{weeks}
+  getChallengesByDoctor,//{challenges}
+  getAllProducts,//{products}
+  getAllRewards,//{rewards}
+  redeemReward,//{redeem}
+  getUserRedeemedRewards,
+  submitChallengeForm,//{challengeforms}
   getChallengeForm,
   getChallengeFormById,
   updateChallengeForm,
@@ -16,12 +20,24 @@ const {
 //{verify middleware}
 router.use(verifyUserToken);
 
+//{products}
 //getAllproducts
 router.get("/products", getAllProducts);
+//{rewards}
+//getAllrewards
+router.get("/rewards", getAllRewards);
+//{redeem}
+//getAllredeem
+router.post("/redeem", redeemReward);
+router.get("/get/redeem",getUserRedeemedRewards)
+//{user}
 //getUserById
 router.get("/getuserdetails", getUserdetailsById);
+router.put("/update", updateUser);
+//{weeks}
 //getAllweeks
 router.get("/weeks", getWeeksByDoctor);
+//{challenges}
 //getAllchallenges
 router.get("/challenges/:weekId", getChallengesByDoctor);
 
