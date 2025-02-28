@@ -19,6 +19,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.2",
     "jssha": "^3.3.1",
     "multer": "^1.4.5-lts.1",
@@ -27,6 +28,7 @@
     "nodemon": "^3.1.9",
     "otp-generator": "^4.0.1",
     "path": "^0.12.7",
+    "puppeteer": "^24.3.0",
     "sequelize": "^6.37.5"
   }
 }

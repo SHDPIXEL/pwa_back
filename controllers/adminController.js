@@ -335,17 +335,26 @@ const createProduct = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, description, oldPrice, newPrice, status, inStock } =
+      const { name, description, oldPrice, status, inStock } =
         req.body;
       const imagePath = req.file
         ? `assets/images/products/${req.file.filename}`
         : null;
 
-      if (!name || !description || !newPrice || !status) {
+      if (!name || !description || !oldPrice || !status) {
         return res.status(400).json({
-          error: "Name, description, new price, and status are required",
+          error: "Name, description, old Price, and status are required",
         });
       }
+
+      const oldPriceValue = parseFloat(oldPrice);
+      if (isNaN(oldPriceValue) || oldPriceValue <= 0) {
+        return res.status(400).json({ error: "Invalid old price" });
+      }
+
+      // Automatically calculate new prices based on user type
+      const priceForDoctor = oldPriceValue * 0.7; // 30% discount
+      const priceForOtherUser = oldPriceValue * 0.8; // 20% discount
 
       const isProductInStock =
         inStock !== undefined ? JSON.parse(inStock) : true;
@@ -353,8 +362,9 @@ const createProduct = async (req, res) => {
       const product = await Products.create({
         name,
         description,
-        oldPrice: oldPrice ? parseFloat(oldPrice) : null,
-        newPrice: parseFloat(newPrice),
+        oldPrice: oldPriceValue,
+        priceForDoctor: parseFloat(priceForDoctor.toFixed(2)), // Rounded to 2 decimal places
+        priceForOtherUser: parseFloat(priceForOtherUser.toFixed(2)),
         product_image: imagePath.length > 0 ? JSON.stringify(imagePath) : null,
         status,
         inStock: isProductInStock,

@@ -60,6 +60,10 @@ const Payment = sequelize.define(
         },
       },
     },
+    quantity:{
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
     email: {
       type: DataTypes.STRING,
       allowNull: false,

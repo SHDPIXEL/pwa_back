@@ -4,8 +4,8 @@ const {
   registerUser,
   loginUser,
   generatePaymentHash,
-  processPayment,
-  verifyPayment
+  handleSuccess,
+  handleFailure
 } = require("../controllers/authControlleruser");
 const { verifyToken } = require("../middleware/userMiddleware");
 
@@ -16,7 +16,7 @@ router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/hash", urlencodedParser, async (req, res) => {
   try {
-    const { txnid, amount, productinfo, firstname, email } = req.body;
+    const { txnid, amount, productinfo, firstname, email, phone,quantity } = req.body;
 
     // Generate hash using the utility function
     const hash = generatePaymentHash(
@@ -24,7 +24,9 @@ router.post("/hash", urlencodedParser, async (req, res) => {
       amount,
       productinfo,
       firstname,
-      email
+      email,
+      phone,
+      quantity
     );
 
     res.send({ hash });
@@ -34,9 +36,9 @@ router.post("/hash", urlencodedParser, async (req, res) => {
   }
 });
 
-// Routes
-router.post("/pay", urlencodedParser, processPayment);
-router.post("/verify", urlencodedParser, verifyPayment);
+// Define Routes
+router.post("/success", handleSuccess);
+router.post("/failure", handleFailure);
 
 // Example of a protected route
 router.get("/protected-route", verifyToken, (req, res) => {

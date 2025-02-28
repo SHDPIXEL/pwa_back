@@ -8,11 +8,246 @@ const { Op } = require("sequelize");
 const nodemailer = require("nodemailer");
 const axios = require("axios"); // Import axios
 const jsSHA = require("jssha");
-
+const path = require("path");
+const fs = require("fs");
+const puppeteer = require("puppeteer");
 
 // Temporary in-memory OTP store
 const otpStore = {};
 const senderIds = ["CELAGE", "CELANX", "CELGNX"];
+
+const generateInvoicePDF = async ({
+  userId,
+  name,
+  email,
+  quantity,
+  phoneNumber,
+  invoiceDate,
+  invoiceTime,
+  orderId,
+  transactionId,
+  amount,
+  productinfo,
+  payuId,
+}) => {
+  try {
+    const invoiceHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Modern Invoice</title>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+            :root {
+                --primary: #f7951f;
+                --text-primary: #1f2937;
+                --text-secondary: #6b7280;
+                --background: #f9fafb;
+                --card: #ffffff;
+                --border: #e5e7eb;
+            }
+
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: 'Inter', sans-serif;
+                background: var(--background);
+                display: flex;
+                justify-content: center;
+                color: var(--text-primary);
+                padding: 2rem;
+                line-height: 1.5;
+            }
+
+            .invoice-container {
+                max-width: 800px;
+                width: 100%;
+                background: var(--card);
+                padding: 2.5rem;
+                border-radius: 12px;
+                box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            }
+
+            .header {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                margin-bottom: 2.5rem;
+                padding-bottom: 1.5rem;
+                border-bottom: 2px solid var(--border);
+            }
+
+            .logo-section h2 {
+                font-weight: 600;
+                color: var(--primary);
+            }
+
+            .info-container {
+                display: flex;
+                justify-content: space-between;
+                width: 100%;
+            }
+
+            .user-info, .invoice-info {
+                flex: 1;
+                font-size: 0.875rem;
+            }
+
+            .invoice-info { text-align: right; }
+
+            .table-container {
+                margin: 2rem 0;
+                border-radius: 12px;
+                overflow: hidden;
+                border: 1px solid var(--border);
+            }
+
+            .invoice-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+
+            .invoice-table th {
+                background: var(--primary);
+                color: white;
+                font-weight: 500;
+                padding: 1rem;
+                text-transform: uppercase;
+                font-size: 0.75rem;
+            }
+
+            .invoice-table td {
+                padding: 1rem;
+                border-bottom: 1px solid var(--border);
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .total-section {
+                margin-top: 2rem;
+                padding-top: 1.5rem;
+                border-top: 2px solid var(--border);
+                text-align: right;
+            }
+
+            .total-row {
+                display: flex;
+                justify-content: flex-end;
+                gap: 4rem;
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .total-row.final {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: var(--primary);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="invoice-container">
+            <div class="header">
+                <div class="logo-section">
+                    <h2>Breboot</h2>
+                    <span style="font-weight: 500; font-size:12px;">B Ready To Reboot Your Body</span>
+                </div>
+            </div>
+
+            <!-- User & Invoice Details -->
+            <div class="info-container">
+                <div class="user-info">
+                    <p><strong>Name:</strong> ${name}</p>
+                    <p><strong>Email:</strong> ${email}</p>
+                    <p><strong>Phone:</strong> ${phoneNumber}</p>
+                    <p><strong>PayU ID:</strong> <span>${payuId}</span></p>
+                </div>
+                <div class="invoice-info">
+                    <p><strong>Invoice Date:</strong> ${invoiceDate} ${invoiceTime}</p>
+                    <p><strong>Order ID:</strong> <span>${orderId}</span></p>
+                    <p><strong>Transaction ID:</strong> <span>${transactionId}</span></p>
+                </div>
+            </div>
+
+            <!-- Product Table -->
+            <div class="table-container">
+                <table class="invoice-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Description</th>
+                            <th>Price</th>
+                            <th>Qty.</th>
+                            <th>Tax</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>${productinfo}</td>
+                            <td>₹${amount}</td>
+                            <td>${quantity}</td>
+                            <td>0%</td>
+                            <td>₹${amount}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Total Amount -->
+            <div class="total-section">
+                <div class="total-row final">
+                    <span>Total Paid Amount:</span>
+                    <span>₹${amount}</span>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+
+    // Create invoices directory if it doesn't exist
+    const invoicesDir = path.join(__dirname, "../invoices");
+    if (!fs.existsSync(invoicesDir)) {
+      fs.mkdirSync(invoicesDir, { recursive: true });
+    }
+
+    // Use userId in the invoice file name
+    const invoiceFileName = `invoice-${userId}-${orderId}.pdf`;
+    const invoicePath = path.join(invoicesDir, invoiceFileName);
+
+    // Launch Puppeteer
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox"],
+    });
+    const page = await browser.newPage();
+
+    // Set viewport to ensure proper rendering
+    await page.setViewport({ width: 800, height: 1000 });
+
+    await page.setContent(invoiceHtml, { waitUntil: "networkidle0" });
+
+    // Generate PDF with defined margins to avoid excessive space
+    await page.pdf({
+      path: invoicePath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+    });
+
+    await browser.close();
+
+    return `/invoices/${invoiceFileName}`; // Path accessible by frontend
+  } catch (error) {
+    console.error("Error generating invoice PDF:", error);
+    throw new Error("Invoice generation failed");
+  }
+};
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
@@ -279,7 +514,7 @@ const registerUser = async (req, res) => {
       storeOTP(email, generatedOTP);
 
       try {
-        await sendEmailOTP(email, generatedOTP, name ,userType);
+        await sendEmailOTP(email, generatedOTP, name, userType);
         return res.status(200).json({ message: "OTP sent to email", email });
       } catch (error) {
         console.error("Error sending OTP via email:", error);
@@ -565,65 +800,42 @@ async function verifyUserToken(req, res, next) {
   }
 }
 
-const generatePaymentHash = (txnid, amount, productinfo, firstname, email) => {
-  if (!txnid || !amount || !productinfo || !firstname || !email) {
+const generatePaymentHash = (
+  txnid,
+  amount,
+  productinfo,
+  firstname,
+  email,
+  phone,
+  quantity
+) => {
+  if (
+    !txnid ||
+    !amount ||
+    !productinfo ||
+    !firstname ||
+    !email ||
+    !phone ||
+    !quantity
+  ) {
     throw new Error("Mandatory fields missing");
   }
 
-  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}||||||||||${process.env.PAYU_SALT}`;
+  // Generate hash string
+  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${phone}|${quantity}||||||||||${process.env.PAYU_SALT}`;
+  console.log("Generated Hash String:", hashString); // Log the hash string
+
+  // Generate SHA-512 hash
   const sha = new jsSHA("SHA-512", "TEXT");
   sha.update(hashString);
-  return sha.getHash("HEX");
+  const hash = sha.getHash("HEX");
+
+  console.log("Generated Hash:", hash); // Log the final hash
+
+  return { hash, txnid };
 };
 
-// Function to process payment
-const processPayment = async (req, res) => {
-  try {
-    console.log("Received request body:", req.body);
-    const { txnid, amount, productinfo, firstname, email, phone, surl, furl } =
-      req.body;
-
-    // Check for missing fields
-    if (!txnid || !amount || !productinfo || !firstname || !email) {
-      return res.status(400).json({ error: "Mandatory fields missing" });
-    }
-
-    // Generate hash correctly
-    const hash = generatePaymentHash(
-      txnid,
-      amount,
-      productinfo,
-      firstname,
-      email
-    );
-
-    // Return HTML form for PayU redirect (PayU expects a form submission)
-    const payuForm = `
-       <form id="payuForm" action="${process.env.PAYU_API_URL}" method="POST">
-         <input type="hidden" name="key" value="${process.env.PAYU_KEY}" />
-         <input type="hidden" name="txnid" value="${txnid}" />
-         <input type="hidden" name="amount" value="${amount}" />
-         <input type="hidden" name="productinfo" value="${productinfo}" />
-         <input type="hidden" name="firstname" value="${firstname}" />
-         <input type="hidden" name="email" value="${email}" />
-         <input type="hidden" name="phone" value="${phone || ""}" />
-         <input type="hidden" name="surl" value="${surl}" />
-         <input type="hidden" name="furl" value="${furl}" />
-         <input type="hidden" name="hash" value="${hash}" />
-         <input type="hidden" name="service_provider" value="payu_paisa" />
-       </form>
-       <script>document.getElementById("payuForm").submit();</script>
-     `;
-
-    res.send(payuForm);
-  } catch (err) {
-    console.error("Error in processing payment:", err);
-    res.status(500).json({ error: "Error processing payment" });
-  }
-};
-
-// Function to handle payment verification and save in DB
-const verifyPayment = async (req, res) => {
+const handleSuccess = async (req, res) => {
   try {
     // Extract the token from headers
     const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
@@ -632,10 +844,13 @@ const verifyPayment = async (req, res) => {
     }
 
     // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET); // Ensure JWT_SECRET is set in your environment variables
-    const userId = decoded.userId; // Extract userId from the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("decodetokennnnn", decoded);
+    const userId = decoded?.id; // Extract userId from the token
+    const userType = decoded?.userType; // Extract userType
 
-    // Extract payment details from request body
+    console.log(req.body); // Debugging log
+
     const {
       txnid,
       amount,
@@ -644,120 +859,141 @@ const verifyPayment = async (req, res) => {
       email,
       status,
       mihpayid,
-      hash,
+      quantity,
+      phone,
     } = req.body;
 
-    // Validate PayU hash
-    const reverseHashString = `${process.env.PAYU_SALT}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${process.env.PAYU_KEY}`;
-    const sha = new jsSHA("SHA-512", "TEXT");
-    sha.update(reverseHashString);
-    const expectedHash = sha.getHash("HEX");
-
-    if (expectedHash !== hash) {
-      console.error("Invalid hash from PayU");
-      return res.status(400).json({ error: "Invalid hash" });
-    }
-
-    if (status === "success") {
-      await Payment.create({
+    if (status === "completed") {
+      const paymentData = await Payment.create({
         userId, // Associate payment with user
         txnid,
         amount,
         productinfo,
+        quantity,
         firstname,
         email,
-        payuId: mihpayid, // Store PayU transaction ID
+        payuId: mihpayid,
         status: "completed",
       });
 
-      // return res.send({
-      //   status: "success",
-      //   transaction_id: `Your transaction ID is: ${txnid}. Kindly save it for any further queries.`,
-      //   message:
-      //     "Congratulations! You'll receive an acknowledgment email shortly.",
-      // });      // Redirect to frontend ThankYouPage
-      res.redirect("http://localhost:3000/thankyou"); // Adjust to your frontend URL
-    } else {
+      // 🛒 Dynamic Points Calculation Based on UserType
+      let baseQuantity, basePoints;
+
+      if (userType === "Doctor") {
+        baseQuantity = 100;
+        basePoints = 500;
+      } else if (userType === "OtherUser") {
+        baseQuantity = 100;
+        basePoints = 50;
+      } else {
+        baseQuantity = 0;
+        basePoints = 0;
+      }
+
+      const pointsPerUnit = baseQuantity > 0 ? basePoints / baseQuantity : 0;
+      const pointsToAdd = Math.floor(pointsPerUnit * quantity); // Ensure it's an integer
+
+      // Fetch user details from the database
+      if (pointsToAdd > 0) {
+        const user = await User.findByPk(userId); // Assuming Sequelize ORM
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        console.log("User Found:", user);
+
+        // Update user points
+        user.points += pointsToAdd; // Adds dynamically calculated points
+        await user.save(); // Save updated points to DB
+
+        console.log(
+          `Added ${pointsToAdd} points to user ${userId} (UserType: ${userType})`
+        );
+      }
+
+      // Generate invoice PDF
+      const invoicePath = await generateInvoicePDF({
+        userId,
+        name: firstname,
+        email,
+        quantity,
+        phoneNumber: phone,
+        invoiceDate: new Date().toISOString().split("T")[0],
+        invoiceTime: new Date().toLocaleTimeString(),
+        orderId: `INV-${Date.now()}`,
+        transactionId: txnid,
+        amount,
+        productinfo,
+        payuId: mihpayid,
+      });
+
+      // Send invoicePath along with redirect URL
+      return res.status(200).json({
+        success: true,
+        message: "Payment successful",
+        paymentData,
+        // redirectUrl: "http://localhost:3000/thankyou",
+        invoicePath,
+      });
+    }
+  } catch (error) {
+    console.error("Error processing successful payment:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const handleFailure = async (req, res) => {
+  try {
+    // Extract the token from headers
+    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId; // Extract userId from the token
+
+    console.log(req.body); // Debugging log
+
+    const {
+      txnid,
+      amount,
+      productinfo,
+      firstname,
+      email,
+      status,
+      mihpayid,
+      quantity,
+    } = req.body;
+
+    if (status === "failed") {
       await Payment.create({
         userId, // Associate payment with user
         txnid,
         amount,
         productinfo,
+        quantity,
         firstname,
         email,
-        payuId: mihpayid, // Store PayU transaction ID
+        payuId: mihpayid,
         status: "failed",
       });
-      // Redirect to home page
-      res.redirect("http://localhost:3000/"); // Adjust to your frontend URL
-      // return res.send({
-      //   status: "failed",
-      //   message: "Payment is not successful",
-      // });
+
+      return res.redirect("http://localhost:3000/failure"); // Redirect to failure page
     }
-  } catch (err) {
-    console.error("Error in verifying payment:", err);
-    return res.status(500).send("Error in verifying payment");
+  } catch (error) {
+    console.error("Error processing failed payment:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
-// // Verify Payment and Redirect
-// const verifyPayment = async (req, res) => {
-//   try {
-//     const { txnid, amount, productinfo, firstname, email, status, mihpayid, hash } = req.body;
-
-//     // Validate PayU hash
-//     const reverseHashString = ${process.env.SALT}|${status}||||||||||${email}|${firstname}|${productinfo}|${amount}|${txnid}|${process.env.KEY};
-//     const sha = new jsSHA("SHA-512", "TEXT");
-//     sha.update(reverseHashString);
-//     const expectedHash = sha.getHash("HEX");
-
-//     if (expectedHash !== hash) {
-//       console.error("Invalid hash from PayU");
-//       return res.status(400).json({ error: "Invalid hash" });
-//     }
-
-//     // Assuming userId is optional or fetched from your DB if needed
-//     const userId = "some-user-id"; // Replace with actual logic if required
-
-//     if (status === "success") {
-//       await Payment.create({
-//         userId,
-//         txnid,
-//         amount,
-//         productinfo,
-//         firstname,
-//         email,
-//         payuId: mihpayid,
-//         status: "completed",
-//       });
-//       // Redirect to frontend ThankYouPage
-//       res.redirect("http://localhost:3000/thankyou"); // Adjust to your frontend URL
-//     } else {
-//       await Payment.create({
-//         userId,
-//         txnid,
-//         amount,
-//         productinfo,
-//         firstname,
-//         email,
-//         payuId: mihpayid,
-//         status: "failed",
-//       });
-//       // Redirect to home page
-//       res.redirect("http://localhost:3000/"); // Adjust to your frontend URL
-//     }
-//   } catch (err) {
-//     console.error("Error in verifying payment:", err);
-//     res.status(500).redirect("http://localhost:3000/"); // Redirect on error
-//   }
-// };
 
 module.exports = {
   registerUser,
   loginUser,
   verifyUserToken,
   generatePaymentHash,
-  processPayment,
-  verifyPayment,
+  handleSuccess,
+  handleFailure,
 };

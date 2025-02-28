@@ -22,7 +22,11 @@ const Products = sequelize.define(
       type: DataTypes.FLOAT,
       allowNull: true,
     },
-    newPrice: {
+    priceForDoctor: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+    },
+    priceForOtherUser: {
       type: DataTypes.FLOAT,
       allowNull: false,
     },

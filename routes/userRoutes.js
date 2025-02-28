@@ -15,6 +15,7 @@ const {
   getChallengeFormById,
   updateChallengeForm,
   deleteChallengeForm,
+  getUserInvoices,//{userInvoices}
 } = require("../controllers/userController");
 
 //{verify middleware}
@@ -40,6 +41,9 @@ router.get("/weeks", getWeeksByDoctor);
 //{challenges}
 //getAllchallenges
 router.get("/challenges/:weekId", getChallengesByDoctor);
+//{userInvoices}
+// Route to get invoices for the authenticated user
+router.get("/invoices", getUserInvoices);
 
 //{challengesForm}
 //create

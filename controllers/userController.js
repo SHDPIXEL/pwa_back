@@ -7,7 +7,8 @@ const ChallengeSubmitForm = require("../models/challengesForm");
 const Rewards = require("../models/rewards");
 const Redeem = require("../models/redeem");
 const uploadMedia = require("../middleware/uploadMiddleware");
-const { logger } = require("sequelize/lib/utils/logger");
+const fs = require("fs");
+const path = require("path");
 
 const getUserdetailsById = async (req, res) => {
   try {
@@ -248,8 +249,8 @@ const getAllProducts = async (req, res) => {
     // Verify the token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Extract user ID from the decoded token
-    const userId = decoded.id;
+    // Extract user ID and userType from the decoded token
+    const { id: userId, userType } = decoded;
 
     // Find the user in the database
     const user = await User.findOne({ where: { id: userId } });
@@ -258,14 +259,25 @@ const getAllProducts = async (req, res) => {
       return res.status(403).json({ error: "Access denied. User not found." });
     }
 
-    // Fetch all products (available to both Doctors and OtherUsers)
+    // Fetch all products
     const products = await Products.findAll();
 
     if (!products.length) {
       return res.status(404).json({ error: "No products found" });
     }
 
-    return res.status(200).json(products);
+    // Filter product details based on userType
+    const filteredProducts = products.map((product) => {
+      const { priceForDoctor, priceForOtherUser, ...otherDetails } =
+        product.toJSON();
+
+      return {
+        ...otherDetails,
+        price: userType === "Doctor" ? priceForDoctor : priceForOtherUser, // Send only relevant price
+      };
+    });
+
+    return res.status(200).json(filteredProducts);
   } catch (error) {
     console.error("Error fetching products:", error);
     return res
@@ -359,9 +371,10 @@ const redeemReward = async (req, res) => {
 
     // Check if the user has enough points
     if (user.points < reward.points) {
-      return res
-        .status(400)
-        .json({ error: "Your points are less than the reward points, so you can't redeem the reward." });
+      return res.status(400).json({
+        error:
+          "Your points are less than the reward points, so you can't redeem the reward.",
+      });
     }
 
     // Deduct reward points from the user
@@ -406,11 +419,14 @@ const getUserRedeemedRewards = async (req, res) => {
     // Find the rewards the user has redeemed
     const redeemedRewards = await Redeem.findAll({
       where: { userId },
-      include: [{
-        model: Rewards,
-        as: 'reward',  // Use alias 'reward' here
-        attributes: ["id", "name", "description", "reward_image", "points"],  // Add description and reward_image here
-      }],
+      include: [
+        {
+          model: Rewards,
+          as: "reward", // Use alias 'reward' here
+          attributes: ["id", "name", "description", "reward_image", "points"], // Add description and reward_image here
+        },
+      ],
+      attributes: ["redeemedAt"], // Include redeemedAt from Redeem model
     });
 
     // If no rewards have been redeemed by the user
@@ -423,19 +439,28 @@ const getUserRedeemedRewards = async (req, res) => {
     }
 
     // Get the IDs of the redeemed rewards
-    const redeemedRewardIds = redeemedRewards.map(redeem => redeem.reward.id);
+    const redeemedRewardIds = redeemedRewards.map((redeem) => redeem.reward.id);
 
     // Get the details of the redeemed rewards
-    const redeemedRewardDetails = redeemedRewards.map(redeem => redeem.reward);
+    const redeemedRewardDetails = redeemedRewards.map((redeem) => ({
+      id: redeem.reward.id,
+      name: redeem.reward.name,
+      description: redeem.reward.description,
+      reward_image: redeem.reward.reward_image,
+      points: redeem.reward.points,
+      redeemedAt: redeem.redeemedAt, // Include the redeemedAt timestamp
+    }));
 
     return res.status(200).json({
       message: "User has redeemed the following rewards.",
-      redeemedRewardIds,    // Array of reward IDs
-      redeemedRewardDetails,  // Array of reward details
+      redeemedRewardIds, // Array of reward IDs
+      redeemedRewardDetails, // Array of reward details
     });
   } catch (error) {
     console.error("Error fetching redeemed rewards:", error);
-    return res.status(500).json({ error: `Error fetching redeemed rewards: ${error.message}` });
+    return res
+      .status(500)
+      .json({ error: `Error fetching redeemed rewards: ${error.message}` });
   }
 };
 
@@ -793,6 +818,55 @@ const deleteChallengeForm = async (req, res) => {
   }
 };
 
+//{userInvoices}
+const getUserInvoices = async (req, res) => {
+  try {
+    // Extract token from headers
+    const token = req.headers.authorization?.split(" ")[1]; // "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded?.id; // Extract userId from token
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: User ID not found in token" });
+    }
+
+    // Define the invoices directory path
+    const invoicesDir = path.join(__dirname, "../invoices");
+    console.log("Invoices Directory Path:", invoicesDir);
+
+    // Ensure the directory exists
+    if (!fs.existsSync(invoicesDir)) {
+      console.error("Invoices directory does not exist!");
+      return res.status(404).json({ error: "No invoices found" });
+    }
+
+    // Read all files in the invoices directory
+    const files = fs.readdirSync(invoicesDir);
+    console.log("Files in Invoices Folder:", files);
+
+    // Filter invoices for the user
+    const userInvoices = files
+      .filter(
+        (file) => file.startsWith(`invoice-${userId}-`) && file.endsWith(".pdf")
+      ) // Ensure correct filename pattern
+      .map((file) => `/invoices/${file}`); // Convert to accessible paths
+
+    console.log("Filtered User Invoices:", userInvoices);
+
+    res.status(200).json({ invoices: userInvoices });
+  } catch (error) {
+    console.error("Error fetching user invoices:", error);
+    res.status(500).json({ error: "Failed to retrieve invoices" });
+  }
+};
+
 module.exports = {
   getUserdetailsById, //{user}
   updateUser,
@@ -800,11 +874,12 @@ module.exports = {
   getChallengesByDoctor, //{challenges}
   getAllProducts, //{products}
   getAllRewards, //{rewards}
-  redeemReward,//{redeem}
+  redeemReward, //{redeem}
   getUserRedeemedRewards,
   submitChallengeForm, //{challengeform}
   getChallengeForm,
   getChallengeFormById,
   updateChallengeForm,
   deleteChallengeForm,
+  getUserInvoices, //{userInvoices}
 };

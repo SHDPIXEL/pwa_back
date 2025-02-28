@@ -117,6 +117,9 @@ app.get("/", (req, res) => {
 // Serve static files from the "assets" folder
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
+// Serve static files from the invoices directory
+app.use("/invoices", express.static(path.join(__dirname, "invoices")));
+
 //Admin
 app.use("/api/auth", authRouteradmin);
 app.use("/admin",adminRoutes)
