@@ -362,11 +362,6 @@ const registerUser = async (req, res) => {
         `Code verification passed. User linked to Doctor with code: ${code}`
       );
       initialPoints = 50; // Assign 50 reward points to OtherUser
-    } else if (userType === "OtherUser" && !code) {
-      console.log("Validation failed: No code provided for regular user.");
-      return res
-        .status(400)
-        .json({ message: "Code is required for OtherUsers" });
     }
 
     // Hash password (if provided)
