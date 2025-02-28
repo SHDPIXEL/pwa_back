@@ -42,9 +42,7 @@ const User = sequelize.define(
     },
     code: {
       type: DataTypes.STRING,
-      allowNull: function () {
-        return this.userType === "OtherUser"; // Required for OtherUsers
-      },
+      allowNull: true,
     },
     points: {
       type: DataTypes.INTEGER,
