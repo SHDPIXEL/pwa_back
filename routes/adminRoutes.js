@@ -18,7 +18,8 @@ const {
   updateProduct,
   deleteProduct,
   createReward, //{Rewards}
-  getAllRedeems,//{redeem}
+  getAllRedeemedRewards,//{redeem}
+  getRedeemedRewardsGraph,
   getAllRewards,
   getRewardById,
   updateReward,
@@ -26,7 +27,10 @@ const {
   getAllUsers,//{user}
   getAllChallengeForms,//{ChallengeForm}
   updateChallengeForm,
+  getAllCompletedPayments,//{payments/SoldItems}
+  getCompletedPaymentsGraph,
 } = require("../controllers/adminController");
+const { route } = require("./userRoutes");
 
 //{verify middleware}
 router.use(verifyAdminToken);
@@ -81,11 +85,19 @@ router.delete("/delete/reward/:id",deleteReward)
 
 //{redeem}
 //getAllRedeem
-router.get("/redeem",getAllRedeems)
+router.get("/redeem",getAllRedeemedRewards)
+//getAllRedeemGraph
+router.get("/redeem/graph",getRedeemedRewardsGraph)
 
 //{user}
 //getAllusers
 router.get("/users",getAllUsers)
+
+//{payments}
+//getAllSoldItems
+router.get("/soldItems",getAllCompletedPayments)
+//{soldItemsGraph}
+router.get("/soldItemsGraph",getCompletedPaymentsGraph)
 
 //{ChallengeForm}
 //getAllchallenges

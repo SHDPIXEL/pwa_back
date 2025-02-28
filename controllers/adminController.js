@@ -4,7 +4,11 @@ const Products = require("../models/products");
 const Rewards = require("../models/rewards");
 const User = require("../models/user");
 const ChallengeSubmitForm = require("../models/challengesForm");
+const Redeem = require("../models/redeem");
+const Payment = require("../models/payment");
 const uploadImage = require("../middleware/uploadMiddleware");
+const { Op } = require("sequelize");
+const moment = require("moment")
 
 //{week}
 // **Create a New Week**
@@ -750,37 +754,151 @@ const updateChallengeForm = async (req, res) => {
 
 //{Redeem}
 // Create a new redeem
-const getAllRedeems = async (req, res) => {
+const getAllRedeemedRewards = async (req, res) => {
   try {
-    // Fetch all redeems with user and reward details
-    const redeems = await Redeem.findAll({
+    // Fetch all redeemed rewards with user and reward details
+    const allRedeemedRewards = await Redeem.findAll({
       include: [
         {
           model: User,
           as: "user",
-          attributes: ["id", "name", "email"], // Fetch relevant user details
+          attributes: ["id", "name", "email"], // Fetch user details
         },
         {
           model: Rewards,
           as: "reward",
-          attributes: ["id", "name", "points"], // Fetch relevant reward details
+          attributes: ["id", "name", "points"], // Fetch reward details
         },
       ],
+      attributes: ["id", "redeemedAt"], // Fetch redemption details
     });
 
-    if (!redeems.length) {
-      return res.status(404).json({ error: "No redemptions found" });
-    }
+    // Calculate total redemptions
+    const totalRedemptions = allRedeemedRewards.length;
 
-    return res.status(200).json(redeems);
+    return res.status(200).json({
+      message: "All redeemed rewards fetched successfully.",
+      totalRedemptions, // Count for the dashboard
+      redeemedRewards: allRedeemedRewards, // List of all redemptions
+    });
   } catch (error) {
-    console.error("Error fetching redemptions:", error);
-    return res
-      .status(500)
-      .json({ error: `Error fetching redemptions: ${error.message}` });
+    console.error("Error fetching all redeemed rewards:", error);
+    return res.status(500).json({
+      error: `Error fetching redeemed rewards: ${error.message}`,
+    });
   }
 };
 
+//{redeemGraph}
+const getRedeemedRewardsGraph = async (req, res) => {
+  try {
+    // Get the current date
+    const today = moment().startOf("day");
+    const sevenDaysAgo = moment(today).subtract(6, "days");
+
+    console.log("Fetching redemptions from:", sevenDaysAgo.toDate(), "to", today.endOf("day").toDate());
+
+    // Fetch redeemed rewards from the last 7 days, including today
+    const redeemedRewards = await Redeem.findAll({
+      where: {
+        redeemedAt: {
+          [Op.between]: [sevenDaysAgo.toDate(), today.endOf("day").toDate()],
+        },
+      },
+      attributes: ["redeemedAt"], // Fetch only the redemption date
+    });
+
+    // Initialize an array with all the dates for the last 7 days
+    const dateCounts = Array.from({ length: 7 }, (_, i) => {
+      const date = moment(sevenDaysAgo).add(i, "days");
+      return {
+        date: date.format("YYYY-MM-DD"), // Format the date as a string
+        redemptions: 0, // Initial redemption count is zero
+      };
+    });
+
+    console.log("Redeemed rewards count:", redeemedRewards.length);
+
+    // Count redemptions for each day
+    redeemedRewards.forEach((reward) => {
+      const redemptionDate = moment(reward.redeemedAt).format("YYYY-MM-DD");
+      const dayEntry = dateCounts.find((entry) => entry.date === redemptionDate);
+      if (dayEntry) {
+        dayEntry.redemptions += 1; // Increment redemption count
+      }
+    });
+
+    // Respond with the data
+    res.status(200).json({
+      message: "Redeemed rewards data for the last 7 days",
+      data: dateCounts,
+    });
+  } catch (error) {
+    console.error("Error fetching redeemed rewards graph data:", error.message, error.stack);
+    res.status(500).json({ message: `Internal server error: ${error.message}` });
+  }
+};
+
+//{payments/SoldItems}
+const getAllCompletedPayments = async (req, res) => {
+  try {
+    const completedPayments = await Payment.findAll({
+      where: { status: "completed" }, // Fetch only completed payments
+    });
+
+    res.status(200).json(completedPayments);
+  } catch (error) {
+    console.error("Error fetching completed payments:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+//{soldItemsGraph}
+const getCompletedPaymentsGraph = async (req, res) => {
+  try {
+    // Get the current date
+    const today = moment().startOf("day");
+    const sevenDaysAgo = moment(today).subtract(6, "days");
+
+    // Fetch completed payments from the last 7 days
+    const completedPayments = await Payment.findAll({
+      where: {
+        status: "completed",
+        createdAt: {
+          [Op.between]: [sevenDaysAgo.toDate(), today.endOf("day").toDate()],
+        },
+      },
+      attributes: ["createdAt"], // Only fetch createdAt for counting
+    });
+
+    // Initialize an array with all the dates for the last 7 days
+    const dateCounts = Array.from({ length: 7 }, (_, i) => {
+      const date = moment(sevenDaysAgo).add(i, "days");
+      return {
+        date: date.format("YYYY-MM-DD"), // Format the date as a string
+        payments: 0, // Initial count is zero
+      };
+    });
+
+    // Count payments for each day
+    completedPayments.forEach((payment) => {
+      const paymentDate = moment(payment.createdAt).format("YYYY-MM-DD");
+      const dayEntry = dateCounts.find((entry) => entry.date === paymentDate);
+      if (dayEntry) {
+        dayEntry.payments += 1; // Increment count for that day
+      }
+    });
+
+    // Respond with the graph data
+    res.status(200).json({
+      message: "Completed payments data for the last 7 days",
+      data: dateCounts,
+    });
+  } catch (error) {
+    console.error("Error fetching completed payments graph data:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 module.exports = {
   createWeek, //{weeks}
@@ -799,7 +917,8 @@ module.exports = {
   updateProduct,
   deleteProduct,
   createReward, //{Rewards}
-  getAllRedeems,//{redeem}
+  getAllRedeemedRewards,//{redeem}
+  getRedeemedRewardsGraph,
   getAllRewards,
   getRewardById,
   updateReward,
@@ -807,4 +926,6 @@ module.exports = {
   getAllUsers, //{user}
   getAllChallengeForms, //{ChallengeForm}
   updateChallengeForm,
+  getAllCompletedPayments,//{payments/SoldItems}
+  getCompletedPaymentsGraph,
 };
