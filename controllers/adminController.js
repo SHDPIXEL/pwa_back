@@ -8,7 +8,9 @@ const Redeem = require("../models/redeem");
 const Payment = require("../models/payment");
 const uploadImage = require("../middleware/uploadMiddleware");
 const { Op } = require("sequelize");
-const moment = require("moment")
+const moment = require("moment");
+const fs = require("fs");
+const path = require("path");
 
 //{week}
 // **Create a New Week**
@@ -339,8 +341,7 @@ const createProduct = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, description, oldPrice, status, inStock } =
-        req.body;
+      const { name, description, oldPrice, status, inStock } = req.body;
       const imagePath = req.file
         ? `assets/images/products/${req.file.filename}`
         : null;
@@ -796,7 +797,12 @@ const getRedeemedRewardsGraph = async (req, res) => {
     const today = moment().startOf("day");
     const sevenDaysAgo = moment(today).subtract(6, "days");
 
-    console.log("Fetching redemptions from:", sevenDaysAgo.toDate(), "to", today.endOf("day").toDate());
+    console.log(
+      "Fetching redemptions from:",
+      sevenDaysAgo.toDate(),
+      "to",
+      today.endOf("day").toDate()
+    );
 
     // Fetch redeemed rewards from the last 7 days, including today
     const redeemedRewards = await Redeem.findAll({
@@ -822,7 +828,9 @@ const getRedeemedRewardsGraph = async (req, res) => {
     // Count redemptions for each day
     redeemedRewards.forEach((reward) => {
       const redemptionDate = moment(reward.redeemedAt).format("YYYY-MM-DD");
-      const dayEntry = dateCounts.find((entry) => entry.date === redemptionDate);
+      const dayEntry = dateCounts.find(
+        (entry) => entry.date === redemptionDate
+      );
       if (dayEntry) {
         dayEntry.redemptions += 1; // Increment redemption count
       }
@@ -834,8 +842,14 @@ const getRedeemedRewardsGraph = async (req, res) => {
       data: dateCounts,
     });
   } catch (error) {
-    console.error("Error fetching redeemed rewards graph data:", error.message, error.stack);
-    res.status(500).json({ message: `Internal server error: ${error.message}` });
+    console.error(
+      "Error fetching redeemed rewards graph data:",
+      error.message,
+      error.stack
+    );
+    res
+      .status(500)
+      .json({ message: `Internal server error: ${error.message}` });
   }
 };
 
@@ -849,6 +863,52 @@ const getAllCompletedPayments = async (req, res) => {
     res.status(200).json(completedPayments);
   } catch (error) {
     console.error("Error fetching completed payments:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+//{paymentWithInvoices}
+const getAllCompletedPaymentsWithInvoices = async (req, res) => {
+  try {
+    // Fetch all completed payments
+    const completedPayments = await Payment.findAll({
+      where: { status: "completed" }, // Fetch only completed payments
+    });
+
+    if (!completedPayments.length) {
+      return res.status(404).json({ error: "No completed payments found" });
+    }
+
+    // Define the invoices directory path
+    const invoicesDir = path.join(__dirname, "../invoices");
+
+    // Ensure the directory exists
+    if (!fs.existsSync(invoicesDir)) {
+      console.error("Invoices directory does not exist!");
+      return res.status(404).json({ error: "No invoices found" });
+    }
+
+    // Read all files in the invoices directory
+    const files = fs.readdirSync(invoicesDir);
+
+    // Map payments to include their corresponding invoices
+    const paymentsWithInvoices = completedPayments.map((payment) => {
+      const userInvoices = files
+        .filter(
+          (file) =>
+            file.startsWith(`invoice-${payment.userId}-`) &&
+            file.endsWith(".pdf")
+        )
+        .map((file) => `/invoices/${file}`);
+
+      return {
+        ...payment.toJSON(), // Convert Sequelize object to plain JSON
+        invoices: userInvoices, // Attach invoice URLs
+      };
+    });
+
+    res.status(200).json({ payments: paymentsWithInvoices });
+  } catch (error) {
+    console.error("Error fetching completed payments with invoices:", error);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -917,7 +977,7 @@ module.exports = {
   updateProduct,
   deleteProduct,
   createReward, //{Rewards}
-  getAllRedeemedRewards,//{redeem}
+  getAllRedeemedRewards, //{redeem}
   getRedeemedRewardsGraph,
   getAllRewards,
   getRewardById,
@@ -926,6 +986,7 @@ module.exports = {
   getAllUsers, //{user}
   getAllChallengeForms, //{ChallengeForm}
   updateChallengeForm,
-  getAllCompletedPayments,//{payments/SoldItems}
+  getAllCompletedPayments, //{payments/SoldItems}
+  getAllCompletedPaymentsWithInvoices,
   getCompletedPaymentsGraph,
 };
