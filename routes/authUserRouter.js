@@ -24,9 +24,7 @@ router.post("/hash", urlencodedParser, async (req, res) => {
       amount,
       productinfo,
       firstname,
-      email,
-      phone,
-      quantity
+      email,  
     );
 
     res.send({ hash });

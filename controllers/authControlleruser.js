@@ -807,31 +807,26 @@ const generatePaymentHash = (
   productinfo,
   firstname,
   email,
-  phone,
-  quantity
+  udf1 = "",
+  udf2 = "",
+  udf3 = "",
+  udf4 = "",
+  udf5 = ""
 ) => {
-  if (
-    !txnid ||
-    !amount ||
-    !productinfo ||
-    !firstname ||
-    !email ||
-    !phone ||
-    !quantity
-  ) {
+  if (!txnid || !amount || !productinfo || !firstname || !email) {
     throw new Error("Mandatory fields missing");
   }
 
-  // Generate hash string
-  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${phone}|${quantity}||||||||||${process.env.PAYU_SALT}`;
-  console.log("Generated Hash String:", hashString); // Log the hash string
+  // Correct hash string format with udf1-udf5 placeholders
+  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${process.env.PAYU_SALT}`;
+  console.log("Generated Hash String:", hashString); // Log for debugging
 
   // Generate SHA-512 hash
   const sha = new jsSHA("SHA-512", "TEXT");
   sha.update(hashString);
   const hash = sha.getHash("HEX");
 
-  console.log("Generated Hash:", hash); // Log the final hash
+  console.log("Generated Hash:", hash); // Log for debugging
 
   return { hash, txnid };
 };
