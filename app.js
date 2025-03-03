@@ -17,7 +17,14 @@ if (PORT === 3000) {
 
 const app = express();
 // Use CORS middleware for all routes
-app.use(cors()); // Enable CORS for all routes
+app.use(
+  cors({
+    origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"], // Allow only these origins
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true, // Allow cookies if needed
+  })
+);
 
 // Use Helmet for security
 app.use(helmet());
@@ -138,7 +145,14 @@ app.get("/", (req, res) => {
 });
 
 // Serve static files from the "assets" folder
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/assets', (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "https://admin.breboot.celagenex.com");
+  res.setHeader("Access-Control-Allow-Origin", "https://user.breboot.celagenex.com");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  next();
+}, express.static(path.join(__dirname, 'assets')));
 
 // Serve static files from the invoices directory
 app.use("/invoices", express.static(path.join(__dirname, "invoices")));
