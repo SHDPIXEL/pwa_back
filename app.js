@@ -17,25 +17,27 @@ if (PORT === 3000) {
 
 const app = express();
 // Use CORS middleware for all routes
-app.use(
-  cors({
-    origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"], // Allow only these origins
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true, // Allow cookies if needed
-  })
-);
+app.use(cors({
+  origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
+
 
 // Use Helmet for security
 app.use(helmet());
 
 // Customize Helmet (optional)
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Disable CSP if needed for external resources
-    crossOriginEmbedderPolicy: false, // Sometimes needed for third-party integrations
-  })
-);
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com", "data:"], // ✅ Allow images from your frontend
+    },
+  },
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // ✅ Allow external images
+}));
 
 //Import Admin Routes
 const authRouteradmin = require("./routes/authAdminRoutes");
@@ -146,11 +148,11 @@ app.get("/", (req, res) => {
 
 // Serve static files from the "assets" folder
 app.use('/assets', (req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "https://admin.breboot.celagenex.com");
-  res.setHeader("Access-Control-Allow-Origin", "https://user.breboot.celagenex.com");
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // 👈 Allow cross-origin requests
   next();
 }, express.static(path.join(__dirname, 'assets')));
 
