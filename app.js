@@ -23,6 +23,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 }));
+// Use CORS middleware for all routes
+// app.use(cors()); // Enable CORS for all routes
 
 
 // Use Helmet for security

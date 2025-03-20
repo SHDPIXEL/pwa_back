@@ -6,6 +6,7 @@ const User = require("../models/user");
 const ChallengeSubmitForm = require("../models/challengesForm");
 const Redeem = require("../models/redeem");
 const Payment = require("../models/payment");
+const Orders = require("../models/order");
 const uploadImage = require("../middleware/uploadMiddleware");
 const { Op } = require("sequelize");
 const moment = require("moment");
@@ -857,7 +858,7 @@ const getRedeemedRewardsGraph = async (req, res) => {
 const getAllCompletedPayments = async (req, res) => {
   try {
     const completedPayments = await Payment.findAll({
-      where: { status: "completed" }, // Fetch only completed payments
+      where: { paymentStatus: "Verified" }, // Fetch only completed payments
     });
 
     res.status(200).json(completedPayments);
@@ -871,7 +872,7 @@ const getAllCompletedPaymentsWithInvoices = async (req, res) => {
   try {
     // Fetch all completed payments
     const completedPayments = await Payment.findAll({
-      where: { status: "completed" }, // Fetch only completed payments
+      where: { paymentStatus: "Verified" }, // Fetch only completed payments
     });
 
     if (!completedPayments.length) {
@@ -923,7 +924,7 @@ const getCompletedPaymentsGraph = async (req, res) => {
     // Fetch completed payments from the last 7 days
     const completedPayments = await Payment.findAll({
       where: {
-        status: "completed",
+        paymentStatus: "Verified",
         createdAt: {
           [Op.between]: [sevenDaysAgo.toDate(), today.endOf("day").toDate()],
         },
@@ -960,6 +961,54 @@ const getCompletedPaymentsGraph = async (req, res) => {
   }
 };
 
+//allPayments
+const getAllPayments = async (req, res) => {
+  try {
+    const payments = await Payment.findAll();
+    return res.status(200).json({ payments });
+  } catch (error) {
+    console.error("Error fetching payments:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+//allOrders
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Orders.findAll();
+    return res.status(200).json({ orders });
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const updatePaymentStatus = async (req, res) => {
+  try {
+    const { paymentId, status } = req.body;
+
+    if (!["Verified", "Rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status value." });
+    }
+
+    const payment = await Payment.findByPk(paymentId);
+    if (!payment) return res.status(404).json({ message: "Payment not found." });
+
+    if (payment.paymentStatus !== "Verifying") {
+      return res.status(400).json({ message: "Payment status cannot be changed." });
+    }
+
+    payment.paymentStatus = status;
+    await payment.save();
+
+    res.status(200).json({ message: `Payment status updated to ${status}`, payment });
+  } catch (error) {
+    console.error("Error updating payment status:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+
 module.exports = {
   createWeek, //{weeks}
   getAllWeeks,
@@ -989,4 +1038,7 @@ module.exports = {
   getAllCompletedPayments, //{payments/SoldItems}
   getAllCompletedPaymentsWithInvoices,
   getCompletedPaymentsGraph,
+  getAllPayments,//allpayments
+  getAllOrders,//allorders
+  updatePaymentStatus
 };

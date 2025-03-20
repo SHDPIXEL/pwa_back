@@ -6,9 +6,13 @@ const Products = require("../models/products");
 const ChallengeSubmitForm = require("../models/challengesForm");
 const Rewards = require("../models/rewards");
 const Redeem = require("../models/redeem");
+const Orders = require("../models/order");
+const Product = require("../models/products");
+const Payment = require("../models/payment");
 const uploadMedia = require("../middleware/uploadMiddleware");
 const fs = require("fs");
 const path = require("path");
+const sequelize = require("../connection");
 
 const getUserdetailsById = async (req, res) => {
   try {
@@ -867,6 +871,35 @@ const getUserInvoices = async (req, res) => {
   }
 };
 
+const getPayments = async (req, res) => {
+  try {
+    // Extract token from headers
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Decode userId from token
+    let userId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded?.id;
+    } catch (error) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or expired token" });
+    }
+
+    // Find payments for the user
+    const payments = await Payment.findAll({ where: { userId } });
+
+    res.status(200).json({ payments });
+  } catch (error) {
+    console.error("Error fetching products and payments:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 module.exports = {
   getUserdetailsById, //{user}
   updateUser,
@@ -882,4 +915,5 @@ module.exports = {
   updateChallengeForm,
   deleteChallengeForm,
   getUserInvoices, //{userInvoices}
+  getPayments,
 };

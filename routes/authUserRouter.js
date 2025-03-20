@@ -3,40 +3,18 @@ const bodyParser = require("body-parser");
 const {
   registerUser,
   loginUser,
-  generatePaymentHash,
-  handleSuccess,
-  handleFailure
+  createOrder,
+  createPayment
 } = require("../controllers/authControlleruser");
 const { verifyToken } = require("../middleware/userMiddleware");
+const upload = require("../middleware/uploadMiddleware")
 
 const router = express.Router();
-const urlencodedParser = bodyParser.urlencoded({ extended: false });
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
-router.post("/hash", urlencodedParser, async (req, res) => {
-  try {
-    const { txnid, amount, productinfo, firstname, email, phone,quantity } = req.body;
-
-    // Generate hash using the utility function
-    const hash = generatePaymentHash(
-      txnid,
-      amount,
-      productinfo,
-      firstname,
-      email,  
-    );
-
-    res.send({ hash });
-  } catch (error) {
-    console.error("Error generating payment hash:", error.message);
-    res.status(400).send({ error: error.message });
-  }
-});
-
-// Define Routes
-router.post("/success", handleSuccess);
-router.post("/failure", handleFailure);
+router.post("/order",createOrder);
+router.post("/payment",createPayment)
 
 // Example of a protected route
 router.get("/protected-route", verifyToken, (req, res) => {

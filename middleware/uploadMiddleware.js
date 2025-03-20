@@ -22,6 +22,9 @@ const storage = (type) =>
             case "rewards":
               uploadPath = "assets/images/rewards";
               break;
+            case "payments": // ✅ Add payments folder
+              uploadPath = "assets/images/payments";
+              break;
             default:
               uploadPath = "assets/images"; // Default image path
               break;

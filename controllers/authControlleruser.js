@@ -11,7 +11,11 @@ const jsSHA = require("jssha");
 const path = require("path");
 const fs = require("fs");
 const puppeteer = require("puppeteer");
-
+const { v4: uuidv4 } = require("uuid");
+const Orders = require("../models/order");
+const Products = require("../models/products");
+const moment = require("moment");
+const upload = require("../middleware/uploadMiddleware");
 
 // Temporary in-memory OTP store
 const otpStore = {};
@@ -801,187 +805,154 @@ async function verifyUserToken(req, res, next) {
   }
 }
 
-const generatePaymentHash = (
-  txnid,
-  amount,
-  productinfo,
-  firstname,
-  email,
-  udf1 = "",
-  udf2 = "",
-  udf3 = "",
-  udf4 = "",
-  udf5 = ""
-) => {
-  if (!txnid || !amount || !productinfo || !firstname || !email) {
-    throw new Error("Mandatory fields missing");
-  }
-
-  // Correct hash string format with udf1-udf5 placeholders
-  const hashString = `${process.env.PAYU_KEY}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}|${udf2}|${udf3}|${udf4}|${udf5}||||||${process.env.PAYU_SALT}`;
-  console.log("Generated Hash String:", hashString); // Log for debugging
-
-  // Generate SHA-512 hash
-  const sha = new jsSHA("SHA-512", "TEXT");
-  sha.update(hashString);
-  const hash = sha.getHash("HEX");
-
-  console.log("Generated Hash:", hash); // Log for debugging
-
-  return { hash, txnid };
-};
-
-const handleSuccess = async (req, res) => {
+const createOrder = async (req, res) => {
   try {
-    // Extract the token from headers
-    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
+    // Extract token from header
+    const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
       return res.status(401).json({ error: "Unauthorized: No token provided" });
     }
 
     // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("decodetokennnnn", decoded);
-    const userId = decoded?.id; // Extract userId from the token
-    const userType = decoded?.userType; // Extract userType
+    let userId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded?.id;
+    } catch (error) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or expired token" });
+    }
 
-    console.log(req.body); // Debugging log
+    console.log("req", req.body);
 
-    const {
-      txnid,
-      amount,
-      productinfo,
-      firstname,
-      email,
-      status,
-      mihpayid,
+    const { productId, quantity, amount } = req.body;
+
+    // Validate input
+    if (!productId || !quantity || !amount) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    // Fetch product details
+    const product = await Products.findByPk(productId);
+    if (!product || product.status !== "Active") {
+      return res.status(404).json({ error: "Product not found or inactive." });
+    }
+
+    if (!product.inStock) {
+      return res.status(400).json({ error: "Product is out of stock." });
+    }
+
+    // Generate unique orderId
+    const orderId = `ORD-${uuidv4().slice(0, 8).toUpperCase()}`;
+
+    // Get current date-time in DD-MM-YYYY hh:mm:ss AM/PM format
+    const orderDate = moment().format("DD-MM-YYYY hh:mm:ss A");
+
+    // Create order
+    const order = await Orders.create({
+      orderId,
+      userId,
+      productId,
       quantity,
-      phone,
-    } = req.body;
+      amount,
+      orderDate,
+    });
 
-    if (status === "completed") {
-      const paymentData = await Payment.create({
-        userId, // Associate payment with user
-        txnid,
-        amount,
-        productinfo,
-        quantity,
-        firstname,
-        email,
-        payuId: mihpayid,
-        status: "completed",
+    return res.status(201).json({
+      message: "Order created successfully!",
+      order,
+      orderId: order.orderId,
+    });
+  } catch (error) {
+    console.error("Error creating order:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const createPayment = async (req, res) => {
+  try {
+    // Use Multer middleware for file upload
+    upload("payments").single("paymentScreenshot")(req, res, async (err) => {
+      if (err) {
+        return res
+          .status(400)
+          .json({ error: `File upload error: ${err.message}` });
+      }
+
+      // Extract token from header
+      const token = req.headers.authorization?.split(" ")[1];
+      if (!token) {
+        return res
+          .status(401)
+          .json({ error: "Unauthorized: No token provided" });
+      }
+
+      let userId;
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded?.id;
+      } catch (error) {
+        return res
+          .status(401)
+          .json({ error: "Unauthorized: Invalid or expired token" });
+      }
+
+      console.log("Request body:", req.body);
+      console.log("Uploaded file:", req.file);
+
+      const { transactionId, orderId, name, image } = req.body;
+
+      // Validate input
+      if (!transactionId || !orderId || !req.file || !name || !image) {
+        return res.status(400).json({
+          error: "Transaction ID, Order ID, and image are required.",
+        });
+      }
+
+      // Check if order exists and belongs to the user
+      const order = await Orders.findOne({ where: { orderId, userId } });
+      if (!order) {
+        return res
+          .status(404)
+          .json({ error: "Order not found or does not belong to the user." });
+      }
+
+      // Check if transactionId is unique
+      const existingPayment = await Payment.findOne({
+        where: { transactionId },
       });
-
-      // 🛒 Dynamic Points Calculation Based on UserType
-      let baseQuantity, basePoints;
-
-      if (userType === "Doctor") {
-        baseQuantity = 100;
-        basePoints = 500;
-      } else if (userType === "OtherUser") {
-        baseQuantity = 100;
-        basePoints = 50;
-      } else {
-        baseQuantity = 0;
-        basePoints = 0;
+      if (existingPayment) {
+        return res
+          .status(400)
+          .json({ error: "Transaction ID already exists." });
       }
 
-      const pointsPerUnit = baseQuantity > 0 ? basePoints / baseQuantity : 0;
-      const pointsToAdd = Math.floor(pointsPerUnit * quantity); // Ensure it's an integer
+      // Store file path
+      const paymentScreenshot = `assets/images/payments/${req.file.filename}`;
 
-      // Fetch user details from the database
-      if (pointsToAdd > 0) {
-        const user = await User.findByPk(userId); // Assuming Sequelize ORM
-
-        if (!user) {
-          return res.status(404).json({ error: "User not found" });
-        }
-
-        console.log("User Found:", user);
-
-        // Update user points
-        user.points += pointsToAdd; // Adds dynamically calculated points
-        await user.save(); // Save updated points to DB
-
-        console.log(
-          `Added ${pointsToAdd} points to user ${userId} (UserType: ${userType})`
-        );
-      }
-
-      // Generate invoice PDF
-      const invoicePath = await generateInvoicePDF({
+      // Create payment record
+      const payment = await Payment.create({
         userId,
-        name: firstname,
-        email,
-        quantity,
-        phoneNumber: phone,
-        invoiceDate: new Date().toISOString().split("T")[0],
-        invoiceTime: new Date().toLocaleTimeString(),
-        orderId: `INV-${Date.now()}`,
-        transactionId: txnid,
-        amount,
-        productinfo,
-        payuId: mihpayid,
+        orderId,
+        transactionId,
+        paymentScreenshot,
+        name,
+        image,
       });
 
-      // Send invoicePath along with redirect URL
-      return res.status(200).json({
-        success: true,
-        message: "Payment successful",
-        paymentData,
-        // redirectUrl: "http://localhost:3000/thankyou",
-        invoicePath,
+      // Update the Orders table to include paymentId
+      const ordersupdate = await Orders.update({ paymentId: payment.id }, { where: { orderId } });
+      console.log("updated order",ordersupdate)
+
+      return res.status(201).json({
+        message: "Payment submitted successfully. Awaiting verification.",
+        payment,
       });
-    }
+    });
   } catch (error) {
-    console.error("Error processing successful payment:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-
-const handleFailure = async (req, res) => {
-  try {
-    // Extract the token from headers
-    const token = req.headers.authorization?.split(" ")[1]; // Assuming "Bearer <token>"
-    if (!token) {
-      return res.status(401).json({ error: "Unauthorized: No token provided" });
-    }
-
-    // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId; // Extract userId from the token
-
-    console.log(req.body); // Debugging log
-
-    const {
-      txnid,
-      amount,
-      productinfo,
-      firstname,
-      email,
-      status,
-      mihpayid,
-      quantity,
-    } = req.body;
-
-    if (status === "failed") {
-      await Payment.create({
-        userId, // Associate payment with user
-        txnid,
-        amount,
-        productinfo,
-        quantity,
-        firstname,
-        email,
-        payuId: mihpayid,
-        status: "failed",
-      });
-
-      return res.redirect("http://localhost:3000/failure"); // Redirect to failure page
-    }
-  } catch (error) {
-    console.error("Error processing failed payment:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error creating payment:", error);
+    res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
 
@@ -989,7 +960,6 @@ module.exports = {
   registerUser,
   loginUser,
   verifyUserToken,
-  generatePaymentHash,
-  handleSuccess,
-  handleFailure,
+  createOrder,
+  createPayment,
 };

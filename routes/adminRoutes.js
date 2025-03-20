@@ -30,6 +30,9 @@ const {
   getAllCompletedPayments,//{payments/SoldItems}
   getAllCompletedPaymentsWithInvoices,
   getCompletedPaymentsGraph,
+  getAllPayments,//allpayments
+  getAllOrders,//allorders
+  updatePaymentStatus
 } = require("../controllers/adminController");
 const { route } = require("./userRoutes");
 
@@ -106,5 +109,11 @@ router.get("/soldItemsGraph",getCompletedPaymentsGraph)
 router.get("/challengeForms",getAllChallengeForms )
 //getChallengeFormById
 router.put("/get/challengeForm/:id", updateChallengeForm)
+//getAllPayments
+router.get("/getPayments",getAllPayments)
+//getAllOrders
+router.get("/getOrders",getAllOrders)
+router.put("/updatePaymentStatus", updatePaymentStatus);
+
 
 module.exports = router;

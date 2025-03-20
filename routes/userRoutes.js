@@ -16,6 +16,7 @@ const {
   updateChallengeForm,
   deleteChallengeForm,
   getUserInvoices,//{userInvoices}
+  getPayments
 } = require("../controllers/userController");
 
 //{verify middleware}
@@ -56,5 +57,7 @@ router.get("/get/challengeForm",getChallengeFormById)
 router.put("/update/challengeForm",updateChallengeForm)
 //deleteChallenge
 router.delete("/delete/challengeForm",deleteChallengeForm)
+
+router.get("/payments",getPayments)
 
 module.exports = router;
