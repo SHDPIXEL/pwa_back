@@ -57,10 +57,9 @@ const Orders = sequelize.define(
   }
 );
 
-
 (async () => {
   try {
-    await Orders.sync({ force: true });
+    await Orders.sync({ force: false });
     console.log("Orders table synchronized.");
   } catch (error) {
     console.error("Error syncing Orders model:", error);

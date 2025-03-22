@@ -487,49 +487,44 @@ const submitChallengeForm = async (req, res) => {
 
     const userId = decoded?.id;
 
-    // Debugging: Check if userId is valid
     if (!userId) {
       console.error("Error: userId is undefined in token");
       return res.status(400).json({ error: "Invalid token, userId missing" });
     }
 
-    // Define upload path based on media type
-    const uploadPath =
-      req.body.mediaType === "images"
-        ? "assets/images/challengesForm"
-        : "assets/videos/challengesForm";
-
     // Handle media upload
-    uploadMedia(uploadPath).array("mediaFiles", 5)(req, res, async (err) => {
+    const upload = uploadMedia("challengesForm").array("mediaFiles", 5);
+
+    upload(req, res, async (err) => {
       if (err) {
         return res
           .status(400)
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      const { name, phone, remark, mediaType, challengeId, isVerified } =
-        req.body;
+      const { name, phone, remark, mediaType, challengeId } = req.body;
+      console.log("Media Type:", mediaType);
 
       // Validate required fields
-      if (!name || !phone || !mediaType) {
+      if (!name || !phone || !mediaType || !challengeId) {
         return res
           .status(400)
-          .json({ error: "Name, phone, and media type are required" });
+          .json({
+            error: "Name, phone, mediaType, and challengeId are required.",
+          });
       }
 
-      if (!["images", "video"].includes(mediaType)) {
+      if (!["image", "video"].includes(mediaType)) {
         return res
           .status(400)
-          .json({ error: "Invalid media type. Allowed: images, video" });
+          .json({ error: "Invalid media type. Allowed: images, video." });
       }
 
       // Collect uploaded media file paths
-      const mediaFiles = req.files
-        ? req.files.map((file) => `${uploadPath}/${file.filename}`)
-        : [];
+      const mediaFiles = req.files?.map((file) => file.path) || [];
 
       // Validate media file limits
-      if (mediaType === "images" && mediaFiles.length > 5) {
+      if (mediaType === "image" && mediaFiles.length > 5) {
         return res.status(400).json({ error: "Maximum 5 images allowed." });
       }
 
@@ -537,9 +532,6 @@ const submitChallengeForm = async (req, res) => {
         return res.status(400).json({ error: "Only 1 video is allowed." });
       }
 
-      const status = "Pending"; // ✅ Always set status to "Pending"
-
-      // Debugging: Log all values before saving
       console.log("Saving challenge with values:", {
         userId,
         name,
@@ -548,21 +540,19 @@ const submitChallengeForm = async (req, res) => {
         mediaType,
         mediaFiles,
         challengeId,
-        isVerified: isVerified || false,
-        status,
+        status: "Pending",
       });
 
-      // Create challenge submission with user ID
+      // Create challenge submission
       const challengeSubmission = await ChallengeSubmitForm.create({
-        userId, // Associate submission with the user
+        userId,
         name,
         phone,
         remark,
         mediaType,
         mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
         challengeId,
-        isVerified: isVerified || false,
-        status,
+        status: "Pending",
       });
 
       res.status(201).json({

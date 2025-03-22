@@ -6,6 +6,7 @@ const otpGenerator = require("otp-generator");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 const axios = require("axios"); // Import axios
 const jsSHA = require("jssha");
 const path = require("path");
@@ -371,6 +372,20 @@ async function sendOtpViaSms(phone, otp) {
     throw new Error("Failed to send OTP");
   }
 }
+
+const sendResetPasswordEmail = async ({ to, subject, text }) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to,
+      subject,
+      text,
+    });
+    console.log(`Password reset email sent to ${to}`);
+  } catch (error) {
+    console.error("Error sending password reset email:", error);
+  }
+};
 
 const generateCode = async () => {
   try {
@@ -772,6 +787,104 @@ const loginUser = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    console.log("req email", req.body);
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate a reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // Set token expiry time (e.g., 15 minutes)
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    // Send the reset link via email
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    const message = `Click the link to reset your password: ${resetUrl}`;
+
+    await sendResetPasswordEmail({
+      to: email,
+      subject: "Breboot Password Reset",
+      text: message,
+    });
+
+    return res
+      .status(200)
+      .json({ message: "Password reset link sent to email" });
+  } catch (error) {
+    console.error("Error in forgot password:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params; // Get token from URL
+    const { newPassword, confirmNewPassword } = req.body;
+
+    if (!newPassword || !confirmNewPassword) {
+      return res.status(400).json({ message: "Both fields are required" });
+    }
+    if (newPassword !== confirmNewPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    // Hash the token and check it in the database
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await User.findOne({
+      where: {
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { [Op.gt]: Date.now() }, // Ensure token is not expired
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Check if the token has expired
+    if (user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: "This link has expired" });
+    }
+
+    // Check if the token was already used
+    if (
+      user.resetPasswordToken === null ||
+      user.resetPasswordExpires === null
+    ) {
+      return res.status(400).json({ message: "Token has already been used" });
+    }
+
+    // Hash new password and update in DB
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    // Clear the reset token fields after password reset
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    return res.status(200).json({ message: "Password reset successful" });
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 async function verifyUserToken(req, res, next) {
   try {
     // Get the token from the Authorization header
@@ -942,8 +1055,11 @@ const createPayment = async (req, res) => {
       });
 
       // Update the Orders table to include paymentId
-      const ordersupdate = await Orders.update({ paymentId: payment.id }, { where: { orderId } });
-      console.log("updated order",ordersupdate)
+      const ordersupdate = await Orders.update(
+        { paymentId: payment.id },
+        { where: { orderId } }
+      );
+      console.log("updated order", ordersupdate);
 
       return res.status(201).json({
         message: "Payment submitted successfully. Awaiting verification.",
@@ -962,4 +1078,6 @@ module.exports = {
   verifyUserToken,
   createOrder,
   createPayment,
+  resetPassword,
+  forgotPassword,
 };

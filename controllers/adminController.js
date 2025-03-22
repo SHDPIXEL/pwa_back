@@ -614,26 +614,45 @@ const getAllChallengeForms = async (req, res) => {
     const allChallenges = await ChallengeSubmitForm.findAll({
       attributes: [
         "id",
+        "userId",
         "name",
         "phone",
         "remark",
         "mediaType",
         "mediaFiles",
+        "challengeId",
         "isVerified",
+        "status",
         "createdAt",
       ],
       order: [["createdAt", "DESC"]], // Sort by latest submissions
     });
 
     if (!allChallenges.length) {
-      return res.status(404).json({ error: "No challengeForm found" });
+      return res.status(404).json({ error: "No challenge forms found." });
     }
 
-    console.log("All Challenges:", allChallenges);
+    // Convert mediaFiles if necessary
+    const formattedChallenges = allChallenges.map((challenge) => {
+      let mediaFiles = challenge.mediaFiles;
 
-    res.status(200).json(allChallenges);
+      if (typeof mediaFiles === "string") {
+        try {
+          mediaFiles = JSON.parse(mediaFiles);
+        } catch (error) {
+          console.error("Error parsing mediaFiles:", error);
+          mediaFiles = [];
+        }
+      }
+
+      return { ...challenge.get(), mediaFiles };
+    });
+
+    console.log("Fetched Challenges:", formattedChallenges.length);
+
+    res.status(200).json(formattedChallenges);
   } catch (error) {
-    console.error("Error fetching all challenge forms:", error);
+    console.error("Error fetching challenge forms:", error);
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
@@ -857,8 +876,8 @@ const getRedeemedRewardsGraph = async (req, res) => {
 //{payments/SoldItems}
 const getAllCompletedPayments = async (req, res) => {
   try {
-    const completedPayments = await Payment.findAll({
-      where: { paymentStatus: "Verified" }, // Fetch only completed payments
+    const completedPayments = await Orders.findAll({
+      where: { status: "Completed" }, // Fetch only completed payments
     });
 
     res.status(200).json(completedPayments);
@@ -922,9 +941,9 @@ const getCompletedPaymentsGraph = async (req, res) => {
     const sevenDaysAgo = moment(today).subtract(6, "days");
 
     // Fetch completed payments from the last 7 days
-    const completedPayments = await Payment.findAll({
+    const completedPayments = await Orders.findAll({
       where: {
-        paymentStatus: "Verified",
+        status: "Completed",
         createdAt: {
           [Op.between]: [sevenDaysAgo.toDate(), today.endOf("day").toDate()],
         },
@@ -937,7 +956,7 @@ const getCompletedPaymentsGraph = async (req, res) => {
       const date = moment(sevenDaysAgo).add(i, "days");
       return {
         date: date.format("YYYY-MM-DD"), // Format the date as a string
-        payments: 0, // Initial count is zero
+        orders: 0, // Initial count is zero
       };
     });
 
@@ -946,7 +965,7 @@ const getCompletedPaymentsGraph = async (req, res) => {
       const paymentDate = moment(payment.createdAt).format("YYYY-MM-DD");
       const dayEntry = dateCounts.find((entry) => entry.date === paymentDate);
       if (dayEntry) {
-        dayEntry.payments += 1; // Increment count for that day
+        dayEntry.orders += 1; // Increment count for that day
       }
     });
 
@@ -975,8 +994,25 @@ const getAllPayments = async (req, res) => {
 //allOrders
 const getAllOrders = async (req, res) => {
   try {
+    // Fetch all orders
     const orders = await Orders.findAll();
-    return res.status(200).json({ orders });
+
+    // Fetch product details manually
+    const ordersWithProductNames = await Promise.all(
+      orders.map(async (order) => {
+        const product = await Products.findOne({
+          where: { id: order.productId },
+          attributes: ["name"],
+        });
+
+        return {
+          ...order.toJSON(),
+          productName: product ? product.name : "Unknown Product", // If no product found
+        };
+      })
+    );
+
+    return res.status(200).json({ orders: ordersWithProductNames });
   } catch (error) {
     console.error("Error fetching orders:", error);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -991,6 +1027,7 @@ const updatePaymentStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
+    // Find payment record
     const payment = await Payment.findByPk(paymentId);
     if (!payment) return res.status(404).json({ message: "Payment not found." });
 
@@ -998,8 +1035,19 @@ const updatePaymentStatus = async (req, res) => {
       return res.status(400).json({ message: "Payment status cannot be changed." });
     }
 
+    // Update payment status
     payment.paymentStatus = status;
     await payment.save();
+
+    // If payment is verified, update the order status to "Completed"
+    if (status === "Verified") {
+      const order = await Orders.findOne({ where: { orderId: payment.orderId } });
+
+      if (order) {
+        order.status = "Completed";
+        await order.save();
+      }
+    }
 
     res.status(200).json({ message: `Payment status updated to ${status}`, payment });
   } catch (error) {

@@ -43,7 +43,7 @@ const ChallengeSubmitForm = sequelize.define(
       allowNull: true,
     },
     mediaType: {
-      type: DataTypes.ENUM("images", "video"),
+      type: DataTypes.ENUM("image", "video"),
       allowNull: false,
     },
     mediaFiles: {
@@ -52,7 +52,7 @@ const ChallengeSubmitForm = sequelize.define(
       validate: {
         maxFiles(value) {
           if (
-            this.mediaType === "images" &&
+            this.mediaType === "image" &&
             Array.isArray(value) &&
             value.length > 5
           ) {

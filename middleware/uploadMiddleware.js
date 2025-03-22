@@ -8,35 +8,33 @@ const storage = (type) =>
       let uploadPath = "";
 
       if (file.mimetype.startsWith("image")) {
-        // Fix the "challengesForm" case to match "images"
-        if (type === "challengesForm" || type === "images") {
-          uploadPath = "assets/images/challengesForm";
-        } else {
-          switch (type) {
-            case "challenges":
-              uploadPath = "assets/images/challenges";
-              break;
-            case "products":
-              uploadPath = "assets/images/products";
-              break;
-            case "rewards":
-              uploadPath = "assets/images/rewards";
-              break;
-            case "payments": // ✅ Add payments folder
-              uploadPath = "assets/images/payments";
-              break;
-            default:
-              uploadPath = "assets/images"; // Default image path
-              break;
-          }
+        switch (type) {
+          case "challengesForm":
+            uploadPath = "assets/images/challengesForm"; // Images go here
+            break;
+          case "challenges":
+            uploadPath = "assets/images/challenges";
+            break;
+          case "products":
+            uploadPath = "assets/images/products";
+            break;
+          case "rewards":
+            uploadPath = "assets/images/rewards";
+            break;
+          case "payments":
+            uploadPath = "assets/images/payments";
+            break;
+          default:
+            uploadPath = "assets/images";
+            break;
         }
       } else if (file.mimetype.startsWith("video")) {
         switch (type) {
           case "challengesForm":
-            uploadPath = "assets/videos/challengesForm";
+            uploadPath = "assets/videos/challengesForm"; // FIXED: Now saves correctly
             break;
           default:
-            uploadPath = "assets/videos"; // Default video path
+            uploadPath = "assets/videos";
             break;
         }
       } else {
