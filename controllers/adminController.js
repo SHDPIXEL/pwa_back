@@ -361,6 +361,7 @@ const createProduct = async (req, res) => {
       // Automatically calculate new prices based on user type
       const priceForDoctor = oldPriceValue * 0.7; // 30% discount
       const priceForOtherUser = oldPriceValue * 0.8; // 20% discount
+      const priceForUser = oldPriceValue * 0.9;
 
       const isProductInStock =
         inStock !== undefined ? JSON.parse(inStock) : true;
@@ -371,6 +372,7 @@ const createProduct = async (req, res) => {
         oldPrice: oldPriceValue,
         priceForDoctor: parseFloat(priceForDoctor.toFixed(2)), // Rounded to 2 decimal places
         priceForOtherUser: parseFloat(priceForOtherUser.toFixed(2)),
+        priceForUser:parseFloat(priceForUser.toFixed(2)),
         product_image: imagePath.length > 0 ? JSON.stringify(imagePath) : null,
         status,
         inStock: isProductInStock,

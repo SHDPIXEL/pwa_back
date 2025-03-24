@@ -30,6 +30,10 @@ const Products = sequelize.define(
       type: DataTypes.FLOAT,
       allowNull: false,
     },
+    priceForUser: {
+      type: DataTypes.FLOAT,
+      allowNull: false,
+    },
     product_image: {
       type: DataTypes.JSON,
       allowNull: true,

@@ -60,6 +60,15 @@ const Payment = sequelize.define(
       type: DataTypes.STRING, // Stores a single image URL
       allowNull: true, // Make it optional
     },
+    address: {
+      type: DataTypes.STRING, // New address field
+      allowNull: false,
+      validate: {
+        notEmpty: {
+          msg: "Address cannot be empty",
+        },
+      },
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields

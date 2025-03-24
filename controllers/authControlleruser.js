@@ -466,17 +466,8 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const {
-      name,
-      phone,
-      email,
-      gender,
-      status,
-      userType,
-      state,
-      password,
-      otp,
-    } = req.body;
+    const { name, phone, email, gender, status, userType, state, otp } =
+      req.body;
 
     let { code } = req.body;
 
@@ -489,21 +480,27 @@ const registerUser = async (req, res) => {
     }
 
     // **Check if user already exists by email or phone**
-    const existingUser = await User.findOne({
-      where: email
-        ? { email } // If email is provided, check only email
-        : { phone }, // If phone is provided, check only phone
-    });
+    const checkExistingUser = async (field, value) => {
+      if (value) {
+        const existingUser = await User.findOne({ where: { [field]: value } });
+        if (existingUser) {
+          console.log(`User already exists with ${field}: ${value}`);
+          return true; // Indicate that the user already exists
+        }
+      }
+      return false;
+    };
 
-    if (existingUser) {
-      console.log(
-        `User already exists with ${email ? "email" : "phone"}: ${
-          email || phone
-        }`
-      );
-      return res.status(400).json({
-        message: `User already exists with this ${email ? "email" : "phone"}.`,
-      });
+    // Check for existing users separately
+    if (await checkExistingUser("email", email)) {
+      return res
+        .status(400)
+        .json({ message: "User already exists with this email." });
+    }
+    if (await checkExistingUser("phone", phone)) {
+      return res
+        .status(400)
+        .json({ message: "User already exists with this phone." });
     }
 
     // Validate phone number (must be exactly 10 digits & cannot start with 0)
@@ -529,21 +526,6 @@ const registerUser = async (req, res) => {
       }
     }
 
-    if (email && !otp) {
-      const generatedOTP = generateOTP();
-      storeOTP(email, generatedOTP);
-
-      try {
-        await sendEmailOTP(email, generatedOTP, name, userType);
-        return res.status(200).json({ message: "OTP sent to email", email });
-      } catch (error) {
-        console.error("Error sending OTP via email:", error);
-        return res
-          .status(500)
-          .json({ message: "Failed to send OTP via email" });
-      }
-    }
-
     let otpStatus = "not verified"; // Default status
 
     // Verify OTP
@@ -557,32 +539,12 @@ const registerUser = async (req, res) => {
       otpStatus = "success"; // Update status to success
     }
 
-    if (email && otp) {
-      const { valid, message } = validateOTP(email, otp);
-      if (!valid) {
-        console.log(`OTP verification failed for ${email}: ${message}`);
-        return res.status(400).json({ message });
-      }
-      console.log(`OTP verified successfully for ${email}`);
-      otpStatus = "success";
-    }
-
     // Ensure required fields are not null after OTP verification
     if (!name || !gender || !userType) {
       console.log("Validation failed: Required user fields are missing.");
       return res.status(400).json({
         message: "Missing required user fields (name, gender, userType).",
       });
-    }
-
-    // Ensure password is provided for email-based registration
-    if (email && (!password || password.trim() === "")) {
-      console.log(
-        "Validation failed: Password is required for email registration."
-      );
-      return res
-        .status(400)
-        .json({ message: "Password is required for email registration." });
     }
 
     if (code) {
@@ -619,10 +581,6 @@ const registerUser = async (req, res) => {
       initialPoints = 50; // Assign 50 reward points to OtherUser
     }
 
-    // Hash password (if provided)
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
-    console.log("Password hashing completed.");
-
     // Create new user
     console.log("Creating new user...");
     const newUser = await User.create({
@@ -635,7 +593,7 @@ const registerUser = async (req, res) => {
       userType,
       code: userCode,
       points: initialPoints,
-      password: hashedPassword,
+      password: "password not required",
     });
 
     console.log("User created successfully:", newUser.dataValues);
@@ -1014,7 +972,7 @@ const createPayment = async (req, res) => {
       console.log("Request body:", req.body);
       console.log("Uploaded file:", req.file);
 
-      const { transactionId, orderId, name, image } = req.body;
+      const { transactionId, orderId, name, image, address } = req.body;
 
       // Validate input
       if (!transactionId || !orderId || !req.file || !name || !image) {
@@ -1052,6 +1010,7 @@ const createPayment = async (req, res) => {
         paymentScreenshot,
         name,
         image,
+        address,
       });
 
       // Update the Orders table to include paymentId
