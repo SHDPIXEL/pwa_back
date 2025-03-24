@@ -747,99 +747,81 @@ const loginUser = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
   try {
-    console.log("req email", req.body);
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
+    if (!email) return res.status(400).json({ message: "Email is required" });
 
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    const user = await AppUser.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Generate a reset token
+    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
     const hashedToken = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
 
-    // Set token expiry time (e.g., 15 minutes)
+    // Save hashed token in DB with expiry time
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    // Send the reset link via email
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-    const message = `Click the link to reset your password: ${resetUrl}`;
+    // Set expiry time (15 minutes)
+    const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // ISO format
+
+    // Generate Reset URL
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}?expires=${expires}`;
+    console.log("Reset URL:", resetUrl);
 
     await sendResetPasswordEmail({
       to: email,
-      subject: "Breboot Password Reset",
-      text: message,
+      subject: "Exim India Password Reset",
+      text: `Click the link to reset your password: ${resetUrl}`,
     });
 
-    return res
-      .status(200)
-      .json({ message: "Password reset link sent to email" });
+    res.status(200).json({ message: "Password reset link sent to email" });
   } catch (error) {
     console.error("Error in forgot password:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
 const resetPassword = async (req, res) => {
   try {
-    const { token } = req.params; // Get token from URL
+    console.log("req data",req.body,req.params,req.query)
+    const { token } = req.params;
     const { newPassword, confirmNewPassword } = req.body;
+    const expires = new Date(req.query.expires).getTime(); // Convert ISO to timestamp
 
-    if (!newPassword || !confirmNewPassword) {
+    // Validate expiration
+    if (!expires || Date.now() > expires) {
+      return res.status(400).json({ message: "This link has expired. Please request a new one." });
+    }
+
+    if (!newPassword || !confirmNewPassword)
       return res.status(400).json({ message: "Both fields are required" });
-    }
-    if (newPassword !== confirmNewPassword) {
+
+    if (newPassword !== confirmNewPassword)
       return res.status(400).json({ message: "Passwords do not match" });
-    }
 
-    // Hash the token and check it in the database
+    // Hash the token
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-    const user = await User.findOne({
-      where: {
-        resetPasswordToken: hashedToken,
-        resetPasswordExpires: { [Op.gt]: Date.now() }, // Ensure token is not expired
-      },
-    });
 
-    if (!user) {
-      return res.status(400).json({ message: "Invalid or expired token" });
-    }
+    // Find user with the hashed token
+    const user = await AppUser.findOne({ resetPasswordToken: hashedToken });
 
-    // Check if the token has expired
-    if (user.resetPasswordExpires < Date.now()) {
-      return res.status(400).json({ message: "This link has expired" });
-    }
+    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
 
-    // Check if the token was already used
-    if (
-      user.resetPasswordToken === null ||
-      user.resetPasswordExpires === null
-    ) {
-      return res.status(400).json({ message: "Token has already been used" });
-    }
-
-    // Hash new password and update in DB
+    // Hash new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
 
-    // Clear the reset token fields after password reset
+    // Clear the reset token
     user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
     await user.save();
 
-    return res.status(200).json({ message: "Password reset successful" });
+    res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
     console.error("Error resetting password:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
