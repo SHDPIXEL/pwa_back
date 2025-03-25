@@ -7,11 +7,291 @@ const ChallengeSubmitForm = require("../models/challengesForm");
 const Redeem = require("../models/redeem");
 const Payment = require("../models/payment");
 const Orders = require("../models/order");
+const Users = require("../models/user");
 const uploadImage = require("../middleware/uploadMiddleware");
 const { Op } = require("sequelize");
 const moment = require("moment");
 const fs = require("fs");
 const path = require("path");
+const numberToWords = require("number-to-words");
+const puppeteer = require("puppeteer");
+
+const generateInvoicePDF = async ({
+  userId,
+  name,
+  quantity,
+  phoneNumber,
+  invoiceDate,
+  invoiceTime,
+  orderId,
+  transactionId,
+  amount,
+  productinfo,
+  amountInWords,
+  customerAddress
+}) => {
+  try {
+    const invoiceHtml = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Modern Invoice</title>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+            :root {
+                --primary: #f7951f;
+                --text-primary: #1f2937;
+                --text-secondary: #6b7280;
+                --background: #f9fafb;
+                --card: #ffffff;
+                --border: #e5e7eb;
+            }
+
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: 'Inter', sans-serif;
+                background: var(--background);
+                display: flex;
+                justify-content: center;
+                color: var(--text-primary);
+                padding: 2rem;
+                line-height: 1.5;
+            }
+
+            .invoice-container {
+                max-width: 800px;
+                width: 100%;
+                background: var(--card);
+                padding: 2.5rem;
+                border-radius: 12px;
+                box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            }
+
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                /*padding-bottom: 1.5rem;*/
+                /*border-bottom: 2px solid var(--border);*/
+            }
+
+            .logo-section img {
+                height: 50px;
+            }
+
+            .info-container {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 1.5rem;
+                padding-bottom: 1.5rem;
+                border-bottom: 2px solid var(--border);
+            }
+
+            .supplier-info, .customer-info {
+                flex: 1;
+                font-size: 0.875rem;
+            }
+
+            .supplier-info p, .customer-info p {
+                margin-bottom: 0.5rem;
+            }
+
+            .invoice-details-container {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 1.5rem;
+                padding-bottom: 1.5rem;
+                border-bottom: 2px solid var(--border);
+                font-size: 0.875rem;
+            }
+
+            .table-container {
+                margin: 2rem 0;
+                border-radius: 12px;
+                overflow: hidden;
+                border: 1px solid var(--border);
+            }
+
+            .invoice-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+
+            .invoice-table th {
+                background: var(--primary);
+                color: white;
+                font-weight: 500;
+                padding: 1rem;
+                text-transform: uppercase;
+                font-size: 0.75rem;
+            }
+
+            .invoice-table td {
+                padding: 1rem;
+                border-bottom: 1px solid var(--border);
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .total-section {
+                margin-top: 2rem;
+                padding-top: 1.5rem;
+                border-top: 2px solid var(--border);
+                text-align: right;
+            }
+
+            .total-row {
+                display: flex;
+                justify-content: flex-end;
+                gap: 4rem;
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .total-row.final {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: var(--primary);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="invoice-container">
+            <!-- Header Section -->
+            <div class="header">
+                <div class="logo-section">
+                    <img src="https://user.cholinationdrive.needsunleashed.com/assets/Logo-RadocjPK.png" alt="Breboot Logo">
+                </div>
+            </div>
+            
+            <!-- Tax Invoice Heading -->
+            <div style="text-align: center; font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem; color: var(--text-primary); padding-bottom: 1rem; border-bottom: 2px solid var(--border);">
+                Tax Invoice
+            </div>
+            
+            <!-- Supplier & Customer Info -->
+            <div class="info-container" style="display: flex; justify-content: space-between; gap: 2rem;">
+                <div class="supplier-info" style="flex: 1; text-align: left;">
+                    <p><strong>Supplier Name:</strong> Celagenex Pvt. Ltd.</p>
+                    <p><strong>Supplier Address:</strong> 123 Street, City, State, 456789</p>
+                    <p><strong>GSTIN:</strong> 29AABCT3518Q1ZV</p>
+                </div>
+                <div class="customer-info" style="flex: 1; text-align: right;">
+                    <p><strong>Name:</strong> ${name}</p>
+                    <p><strong>Phone:</strong> ${phoneNumber}</p>
+                    <p><strong>Address:</strong> ${customerAddress}</p>
+                </div>
+            </div>
+
+
+            <!-- Invoice Details (Moved Below Supplier & Customer Info) -->
+            <div class="invoice-details-container">
+                <div class="left-details">
+                    <p><strong>Invoice Date:</strong> ${invoiceDate} ${invoiceTime}</p>
+                    <p><strong>Transaction ID:</strong> ${transactionId}</p>
+                </div>
+                <div class="right-details">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Payment Method:</strong> UPI/DIGITAL </p>
+                </div>
+            </div>
+
+            <!-- Product Table -->
+            <div class="table-container">
+                <table class="invoice-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Description</th>
+                            <th>Price</th>
+                            <th>Qty.</th>
+                            <th>Tax</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>${productinfo}</td>
+                            <td>₹${amount}</td>
+                            <td>${quantity}</td>
+                            <td>0%</td>
+                            <td>₹${amount}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Total Amount -->
+            <div class="total-section" style="border-bottom: 2px solid var(--border); padding-bottom: 1rem;">
+                <div class="total-row final" style="font-size: 1.1rem;">
+                    <span style="font-weight: bold; color: orange;">Total Paid Amount: ₹${amount}</span>
+                </div>
+                <div class="total-row" style="font-size: 0.9rem; color: var(--text-primary); font-weight: 500;">
+                    <span>Total Amount in Words: ${amountInWords}</span>
+                </div>
+            </div>
+            
+            <!-- Additional Invoice Notes -->
+            <table style="width: 100%; border-collapse: collapse; margin-top: 2rem; border: 1px solid var(--border);">
+                <tr>
+                    <td style="width: 50%; padding: 8px; border-right: 1px solid var(--border); font-size: 0.875rem; color: var(--text-primary); vertical-align: bottom; text-align: left;">
+                        <p>www.celagenex.com</p>
+                    </td>
+                    <td style="width: 50%; padding: 8px; font-size: 0.875rem; color: var(--text-primary); vertical-align: bottom; text-align: right;">
+                        <p>E&OE</p>
+                        <p style="margin-top: 2rem;">Authorized Signatory</p>
+                        <p>Celagenex Pvt. Ltd.</p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </body>
+    </html>
+    `;
+
+    // Create invoices directory if it doesn't exist
+    const invoicesDir = path.join(__dirname, "../invoices");
+    if (!fs.existsSync(invoicesDir)) {
+      fs.mkdirSync(invoicesDir, { recursive: true });
+    }
+
+    // Use userId in the invoice file name
+    const invoiceFileName = `invoice-${userId}-${orderId}.pdf`;
+    const invoicePath = path.join(invoicesDir, invoiceFileName);
+
+    // Launch Puppeteer
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox"],
+    });
+    const page = await browser.newPage();
+
+    // Set viewport to ensure proper rendering
+    await page.setViewport({ width: 800, height: 1000 });
+
+    await page.setContent(invoiceHtml, { waitUntil: "networkidle0" });
+
+    // Generate PDF with defined margins to avoid excessive space
+    await page.pdf({
+      path: invoicePath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+    });
+
+    await browser.close();
+
+    return `/invoices/${invoiceFileName}`; // Path accessible by frontend
+  } catch (error) {
+    console.error("Error generating invoice PDF:", error);
+    throw new Error("Invoice generation failed");
+  }
+};
 
 //{week}
 // **Create a New Week**
@@ -372,7 +652,7 @@ const createProduct = async (req, res) => {
         oldPrice: oldPriceValue,
         priceForDoctor: parseFloat(priceForDoctor.toFixed(2)), // Rounded to 2 decimal places
         priceForOtherUser: parseFloat(priceForOtherUser.toFixed(2)),
-        priceForUser:parseFloat(priceForUser.toFixed(2)),
+        priceForUser: parseFloat(priceForUser.toFixed(2)),
         product_image: imagePath.length > 0 ? JSON.stringify(imagePath) : null,
         status,
         inStock: isProductInStock,
@@ -985,8 +1265,38 @@ const getCompletedPaymentsGraph = async (req, res) => {
 //allPayments
 const getAllPayments = async (req, res) => {
   try {
+    // Fetch all payments
     const payments = await Payment.findAll();
-    return res.status(200).json({ payments });
+
+    if (!payments.length) {
+      return res.status(404).json({ error: "No payments found" });
+    }
+
+    // Define the invoices directory path
+    const invoicesDir = path.join(__dirname, "../invoices");
+
+    // Ensure the directory exists
+    if (!fs.existsSync(invoicesDir)) {
+      console.error("Invoices directory does not exist!");
+      return res.status(404).json({ error: "No invoices found" });
+    }
+
+    // Read all invoice files
+    const files = fs.readdirSync(invoicesDir);
+
+    // Attach invoice URLs for each payment based on `orderId`
+    const paymentsWithInvoices = payments.map((payment) => {
+      const invoiceFile = files.find((file) =>
+        file.startsWith(`invoice-${payment.userId}-${payment.orderId}`)
+      );
+
+      return {
+        ...payment.toJSON(), // Convert Sequelize object to plain JSON
+        invoiceUrl: invoiceFile ? `/invoices/${invoiceFile}` : null, // Attach single invoice URL
+      };
+    });
+
+    return res.status(200).json({ payments: paymentsWithInvoices });
   } catch (error) {
     console.error("Error fetching payments:", error);
     return res.status(500).json({ error: "Internal Server Error" });
@@ -1031,7 +1341,9 @@ const updatePaymentStatus = async (req, res) => {
 
     // Find payment record
     const payment = await Payment.findByPk(paymentId);
-    if (!payment) return res.status(404).json({ message: "Payment not found." });
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found." });
+    }
 
     if (payment.paymentStatus !== "Verifying") {
       return res.status(400).json({ message: "Payment status cannot be changed." });
@@ -1048,16 +1360,41 @@ const updatePaymentStatus = async (req, res) => {
       if (order) {
         order.status = "Completed";
         await order.save();
+
+        // Fetch user details
+        const user = await Users.findByPk(payment.userId);
+        if (!user) return res.status(404).json({ message: "User not found." });
+
+        // Convert amount to words
+        const amountInWords = numberToWords.toWords(order.amount);
+
+        // Generate Invoice PDF in the background
+        generateInvoicePDF({
+          userId: payment.userId,
+          name: user.name,
+          phoneNumber: user.phoneNumber,
+          invoiceDate: new Date().toISOString().split("T")[0],
+          invoiceTime: new Date().toLocaleTimeString(),
+          orderId: payment.orderId,
+          transactionId: payment.transactionId,
+          amount: order.amount,
+          productinfo: payment.name,
+          quantity: order.quantity,
+          customerAddress: payment.address,
+          amountInWords: amountInWords,
+        })
+          .then(() => console.log("Invoice PDF generated successfully"))
+          .catch((err) => console.error("Error generating invoice PDF:", err));
       }
     }
 
+    // Send response immediately, while invoice generation happens in the background
     res.status(200).json({ message: `Payment status updated to ${status}`, payment });
   } catch (error) {
     console.error("Error updating payment status:", error);
     res.status(500).json({ message: "Internal server error." });
   }
 };
-
 
 module.exports = {
   createWeek, //{weeks}
@@ -1088,7 +1425,7 @@ module.exports = {
   getAllCompletedPayments, //{payments/SoldItems}
   getAllCompletedPaymentsWithInvoices,
   getCompletedPaymentsGraph,
-  getAllPayments,//allpayments
-  getAllOrders,//allorders
-  updatePaymentStatus
+  getAllPayments, //allpayments
+  getAllOrders, //allorders
+  updatePaymentStatus,
 };

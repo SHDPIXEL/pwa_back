@@ -507,11 +507,9 @@ const submitChallengeForm = async (req, res) => {
 
       // Validate required fields
       if (!name || !phone || !mediaType || !challengeId) {
-        return res
-          .status(400)
-          .json({
-            error: "Name, phone, mediaType, and challengeId are required.",
-          });
+        return res.status(400).json({
+          error: "Name, phone, mediaType, and challengeId are required.",
+        });
       }
 
       if (!["image", "video"].includes(mediaType)) {
@@ -883,10 +881,38 @@ const getPayments = async (req, res) => {
     // Find payments for the user
     const payments = await Payment.findAll({ where: { userId } });
 
-    res.status(200).json({ payments });
+    if (!payments.length) {
+      return res.status(404).json({ error: "No payments found" });
+    }
+
+    // Define the invoices directory path
+    const invoicesDir = path.join(__dirname, "../invoices");
+
+    // Ensure the directory exists
+    if (!fs.existsSync(invoicesDir)) {
+      console.error("Invoices directory does not exist!");
+      return res.status(404).json({ error: "No invoices found" });
+    }
+
+    // Read all invoice files
+    const files = fs.readdirSync(invoicesDir);
+
+    // Attach invoice URLs for each payment based on `orderId`
+    const paymentsWithInvoices = payments.map((payment) => {
+      const invoiceFile = files.find((file) =>
+        file.startsWith(`invoice-${payment.userId}-${payment.orderId}`)
+      );
+
+      return {
+        ...payment.toJSON(), // Convert Sequelize object to plain JSON
+        invoiceUrl: invoiceFile ? `/invoices/${invoiceFile}` : null, // Attach invoice URL directly
+      };
+    });
+
+    return res.status(200).json({ payments: paymentsWithInvoices });
   } catch (error) {
-    console.error("Error fetching products and payments:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching payments:", error);
+    return res.status(500).json({ error: "Server error" });
   }
 };
 

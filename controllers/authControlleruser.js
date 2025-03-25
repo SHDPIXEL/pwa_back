@@ -25,7 +25,6 @@ const senderIds = ["CELAGE", "CELANX", "CELGNX"];
 const generateInvoicePDF = async ({
   userId,
   name,
-  email,
   quantity,
   phoneNumber,
   invoiceDate,
@@ -34,7 +33,6 @@ const generateInvoicePDF = async ({
   transactionId,
   amount,
   productinfo,
-  payuId,
 }) => {
   try {
     const invoiceHtml = `
@@ -79,30 +77,41 @@ const generateInvoicePDF = async ({
 
             .header {
                 display: flex;
-                flex-direction: column;
-                align-items: flex-start;
-                margin-bottom: 2.5rem;
-                padding-bottom: 1.5rem;
-                border-bottom: 2px solid var(--border);
+                justify-content: space-between;
+                align-items: center;
+                /*padding-bottom: 1.5rem;*/
+                /*border-bottom: 2px solid var(--border);*/
             }
 
-            .logo-section h2 {
-                font-weight: 600;
-                color: var(--primary);
+            .logo-section img {
+                height: 50px;
             }
 
             .info-container {
                 display: flex;
                 justify-content: space-between;
-                width: 100%;
+                margin-top: 1.5rem;
+                padding-bottom: 1.5rem;
+                border-bottom: 2px solid var(--border);
             }
 
-            .user-info, .invoice-info {
+            .supplier-info, .customer-info {
                 flex: 1;
                 font-size: 0.875rem;
             }
 
-            .invoice-info { text-align: right; }
+            .supplier-info p, .customer-info p {
+                margin-bottom: 0.5rem;
+            }
+
+            .invoice-details-container {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 1.5rem;
+                padding-bottom: 1.5rem;
+                border-bottom: 2px solid var(--border);
+                font-size: 0.875rem;
+            }
 
             .table-container {
                 margin: 2rem 0;
@@ -156,25 +165,42 @@ const generateInvoicePDF = async ({
     </head>
     <body>
         <div class="invoice-container">
+            <!-- Header Section -->
             <div class="header">
                 <div class="logo-section">
-                    <h2>Breboot</h2>
-                    <span style="font-weight: 500; font-size:12px;">B Ready To Reboot Your Body</span>
+                    <img src="https://user.cholinationdrive.needsunleashed.com/assets/Logo-RadocjPK.png" alt="Breboot Logo">
+                </div>
+            </div>
+            
+            <!-- Tax Invoice Heading -->
+            <div style="text-align: center; font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem; color: var(--text-primary); padding-bottom: 1rem; border-bottom: 2px solid var(--border);">
+                Tax Invoice
+            </div>
+            
+            <!-- Supplier & Customer Info -->
+            <div class="info-container" style="display: flex; justify-content: space-between; gap: 2rem;">
+                <div class="supplier-info" style="flex: 1; text-align: left;">
+                    <p><strong>Supplier Name:</strong> Celagenex Pvt. Ltd.</p>
+                    <p><strong>Supplier Address:</strong> 123 Street, City, State, 456789</p>
+                    <p><strong>GSTIN:</strong> 29AABCT3518Q1ZV</p>
+                </div>
+                <div class="customer-info" style="flex: 1; text-align: right;">
+                    <p><strong>Name:</strong> ${name}</p>
+                    <p><strong>Phone:</strong> ${phoneNumber}</p>
+                    <p><strong>Address:</strong> ${customerAddress}</p>
                 </div>
             </div>
 
-            <!-- User & Invoice Details -->
-            <div class="info-container">
-                <div class="user-info">
-                    <p><strong>Name:</strong> ${name}</p>
-                    <p><strong>Email:</strong> ${email}</p>
-                    <p><strong>Phone:</strong> ${phoneNumber}</p>
-                    <p><strong>PayU ID:</strong> <span>${payuId}</span></p>
-                </div>
-                <div class="invoice-info">
+
+            <!-- Invoice Details (Moved Below Supplier & Customer Info) -->
+            <div class="invoice-details-container">
+                <div class="left-details">
                     <p><strong>Invoice Date:</strong> ${invoiceDate} ${invoiceTime}</p>
-                    <p><strong>Order ID:</strong> <span>${orderId}</span></p>
-                    <p><strong>Transaction ID:</strong> <span>${transactionId}</span></p>
+                    <p><strong>Transaction ID:</strong> ${transactionId}</p>
+                </div>
+                <div class="right-details">
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Payment Method:</strong> UPI/DIGITAL </p>
                 </div>
             </div>
 
@@ -205,12 +231,30 @@ const generateInvoicePDF = async ({
             </div>
 
             <!-- Total Amount -->
-            <div class="total-section">
+            <div class="total-section" style="border-bottom: 2px solid var(--border); padding-bottom: 1rem;">
                 <div class="total-row final">
-                    <span>Total Paid Amount:</span>
-                    <span>₹${amount}</span>
+                    <span style="font-size: 1.1rem;">Total Paid Amount:</span>
+                    <span style="font-size: 1.1rem;">₹${amount}</span>
+                </div>
+                <div class="total-row" style="font-size: 0.9rem; color: var(--text-primary); font-weight: 500;">
+                    <span>Total Amount in Words:</span>
+                    <span>${amountInWords}</span>
                 </div>
             </div>
+            
+            <!-- Additional Invoice Notes -->
+            <table style="width: 100%; border-collapse: collapse; margin-top: 2rem; border: 1px solid var(--border);">
+                <tr>
+                    <td style="width: 50%; padding: 8px; border-right: 1px solid var(--border); font-size: 0.875rem; color: var(--text-primary); vertical-align: bottom; text-align: left;">
+                        <p>www.celagenex.com</p>
+                    </td>
+                    <td style="width: 50%; padding: 8px; font-size: 0.875rem; color: var(--text-primary); vertical-align: bottom; text-align: right;">
+                        <p>E&OE</p>
+                        <p style="margin-top: 2rem;">Authorized Signatory</p>
+                        <p>Celagenex Pvt. Ltd.</p>
+                    </td>
+                </tr>
+            </table>
         </div>
     </body>
     </html>
