@@ -28,7 +28,7 @@ const generateInvoicePDF = async ({
   amount,
   productinfo,
   amountInWords,
-  customerAddress
+  customerAddress,
 }) => {
   try {
     const invoiceHtml = `
@@ -975,9 +975,19 @@ const updateChallengeForm = async (req, res) => {
           .json({ error: "Invalid media type. Allowed: images, video" });
       }
 
-      let mediaFiles = challengeForm.mediaFiles
-        ? JSON.parse(challengeForm.mediaFiles)
-        : [];
+      let mediaFiles = [];
+      if (challengeForm.mediaFiles) {
+        try {
+          mediaFiles =
+            typeof challengeForm.mediaFiles === "string"
+              ? JSON.parse(challengeForm.mediaFiles)
+              : challengeForm.mediaFiles;
+        } catch (error) {
+          console.error("Error parsing mediaFiles:", error);
+          mediaFiles = [];
+        }
+      }
+
       if (req.files && req.files.length > 0) {
         const newFiles = req.files.map(
           (file) => `${uploadPath}/${file.filename}`
@@ -1346,7 +1356,9 @@ const updatePaymentStatus = async (req, res) => {
     }
 
     if (payment.paymentStatus !== "Verifying") {
-      return res.status(400).json({ message: "Payment status cannot be changed." });
+      return res
+        .status(400)
+        .json({ message: "Payment status cannot be changed." });
     }
 
     // Update payment status
@@ -1355,7 +1367,9 @@ const updatePaymentStatus = async (req, res) => {
 
     // If payment is verified, update the order status to "Completed"
     if (status === "Verified") {
-      const order = await Orders.findOne({ where: { orderId: payment.orderId } });
+      const order = await Orders.findOne({
+        where: { orderId: payment.orderId },
+      });
 
       if (order) {
         order.status = "Completed";
@@ -1372,7 +1386,7 @@ const updatePaymentStatus = async (req, res) => {
         generateInvoicePDF({
           userId: payment.userId,
           name: user.name,
-          phoneNumber: user.phoneNumber,
+          phoneNumber: user.phone,
           invoiceDate: new Date().toISOString().split("T")[0],
           invoiceTime: new Date().toLocaleTimeString(),
           orderId: payment.orderId,
@@ -1389,7 +1403,9 @@ const updatePaymentStatus = async (req, res) => {
     }
 
     // Send response immediately, while invoice generation happens in the background
-    res.status(200).json({ message: `Payment status updated to ${status}`, payment });
+    res
+      .status(200)
+      .json({ message: `Payment status updated to ${status}`, payment });
   } catch (error) {
     console.error("Error updating payment status:", error);
     res.status(500).json({ message: "Internal server error." });

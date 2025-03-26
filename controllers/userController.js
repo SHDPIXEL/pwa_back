@@ -491,6 +491,7 @@ const submitChallengeForm = async (req, res) => {
       console.error("Error: userId is undefined in token");
       return res.status(400).json({ error: "Invalid token, userId missing" });
     }
+    console.log("Media Files:", req.files);
 
     // Handle media upload
     const upload = uploadMedia("challengesForm").array("mediaFiles", 5);
@@ -504,6 +505,7 @@ const submitChallengeForm = async (req, res) => {
 
       const { name, phone, remark, mediaType, challengeId } = req.body;
       console.log("Media Type:", mediaType);
+
 
       // Validate required fields
       if (!name || !phone || !mediaType || !challengeId) {
@@ -548,7 +550,7 @@ const submitChallengeForm = async (req, res) => {
         phone,
         remark,
         mediaType,
-        mediaFiles: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
+        mediaFiles: mediaFiles.length > 0 ? mediaFiles.map(file => file.replace(/\\/g, "/")) : null,
         challengeId,
         status: "Pending",
       });

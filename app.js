@@ -17,14 +17,14 @@ if (PORT === 3000) {
 
 const app = express();
 // Use CORS middleware for all routes
-// app.use(cors({
-//   origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"],
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization"],
-//   credentials: true,
-// }));
+app.use(cors({
+  origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
 // Use CORS middleware for all routes
-app.use(cors()); // Enable CORS for all routes
+// app.use(cors()); // Enable CORS for all routes
 
 
 // Use Helmet for security
