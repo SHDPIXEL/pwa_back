@@ -17,6 +17,7 @@ const Orders = require("../models/order");
 const Products = require("../models/products");
 const moment = require("moment");
 const upload = require("../middleware/uploadMiddleware");
+const { sendMail } = require('../utils/mailer');
 
 // Temporary in-memory OTP store
 const otpStore = {};
@@ -391,6 +392,51 @@ const sendEmailOTP = async (email, otp, name = "User", userType) => {
   }
 };
 
+const getWelcomeEmailContent = (doctorName, referralCode) => {
+  return {
+    text: `
+Dear Dr. ${doctorName},
+Welcome to Breboot App! 🎉 You’ve taken the first step towards a healthier lifestyle for yourself and your patients.
+As a welcome gift, you’ve received 500 Breboot points and a referral code to share with your patients. Here’s how you can make the most of the app:
+
+🌟 1. Breboot Challenge
+Participate in weekly exercise & diet challenges by submitting your videos or photos. Earn reward points for every challenge you complete!
+
+💎 2. Privilege Member Program
+• Get 30% off on Byzepta purchases.
+• Your patients can also get Byzepta @10% discount by registering in app and if they add your referral code (${referralCode}) they can avail additional 10% off.
+• Earn 50 points for every referral or purchase.
+
+🍽 3. 100 lucky drs. will get free Diet Consultation
+You and your patients can avail a free 1 month diet plan from celebrity dietician Dr. Kiran Rukadikar and team.
+
+📌 Important Note: There is no cancellation or refund policy on purchases.
+
+Start exploring the app and begin earning rewards today! If you need any assistance, feel free to reach out to our support team at cheerfol2@celagenex.com.
+
+Happy Rebooting! 🚀
+The Breboot Team
+    `,
+    html: `
+      <h2>Dear Dr. ${doctorName},</h2>
+      <p>Welcome to <strong>Breboot App</strong>! 🎉 You’ve taken the first step towards a healthier lifestyle for yourself and your patients.</p>
+      <p>As a welcome gift, you’ve received <strong>500 Breboot points</strong> and a referral code: <strong>${referralCode}</strong> to share with your patients.</p>
+      <h3>Here’s how you can make the most of the app:</h3>
+      <ul>
+        <li><strong>🌟 Breboot Challenge:</strong> Participate in weekly exercise & diet challenges by submitting your videos or photos. Earn reward points for every challenge you complete!</li>
+        <li><strong>💎 Privilege Member Program:</strong><br>
+          • Get 30% off on Byzepta purchases.<br>
+          • Your patients can also get Byzepta @10% discount by registering in app and if they add your referral code (<strong>${referralCode}</strong>) they can avail additional 10% off.<br>
+          • Earn 50 points for every referral or purchase.</li>
+        <li><strong>🍽 Free Diet Consultation:</strong> 100 lucky doctors will get free diet consultation. You and your patients can avail a free 1-month diet plan from celebrity dietician Dr. Kiran Rukadikar and team.</li>
+      </ul>
+      <p><strong>📌 Important Note:</strong> There is no cancellation or refund policy on purchases.</p>
+      <p>Start exploring the app and begin earning rewards today! If you need assistance, reach out to our support team at <a href="mailto:cheerfol2@celagenex.com">cheerfol2@celagenex.com</a>.</p>
+      <p><strong>Happy Rebooting! 🚀</strong><br>The Breboot Team</p>
+    `,
+  };
+};
+
 // Send OTP via SMS
 async function sendOtpViaSms(phone, otp) {
   const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
@@ -416,6 +462,40 @@ async function sendOtpViaSms(phone, otp) {
     throw new Error("Failed to send OTP");
   }
 }
+
+
+async function sendWelcomeSms(phone, name, referralCode) {
+  const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
+  // const message = `Welcome to Breboot App - B Ready to Reboot! Dear Dr.${name},Welcome! You've earned 500 Breboot points and a referral code. Join weekly challenges, enjoy discounts, earn rewards, and get a free diet plan. Register now! Breboot Team CELAGENEX.`;
+  const message = `Welcome to Breboot App - B Ready to Reboot!
+Dear Dr.${name},
+Welcome! You've earned 500 Breboot points and a referral code. Join weekly challenges, enjoy discounts, earn rewards, and get free diet plan. Register now!
+Breboot Team
+CELAGENEX.`
+
+  const apiUrl =
+    process.env.OTP_BASE_SEND +
+    `?username=celagenx&password=celagenx&senderid=${senderId}&message=${encodeURIComponent(
+      message
+    )}&numbers=${phone}`;
+
+  try {
+    const response = await axios.get(apiUrl);
+    console.log("SMS API Response:", response.data); // Log full response data
+
+    if (response.status === 200 && response.data.includes("Success")) {
+      console.log(`Welcome SMS sent to Dr. ${name} at ${phone} via senderId ${senderId}`);
+      return "Welcome SMS sent successfully";
+    } else {
+      console.error("Error sending Welcome SMS:", response.data);
+      throw new Error("Failed to send Welcome SMS");
+    }
+  } catch (error) {
+    console.error("Error during API request for Welcome SMS:", error);
+    throw new Error("Failed to send Welcome SMS");
+  }
+}
+
 
 const sendResetPasswordEmail = async ({ to, subject, text }) => {
   try {
@@ -510,9 +590,7 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const { name, phone, email, gender, status, userType, state, otp } =
-      req.body;
-
+    const { name, phone, email, gender, status, userType, state, otp } = req.body;
     let { code } = req.body;
 
     // Ensure at least one of phone or email is provided
@@ -523,19 +601,18 @@ const registerUser = async (req, res) => {
         .json({ message: "Either phone or email is required" });
     }
 
-    // **Check if user already exists by email or phone**
+    // Check if user already exists by email or phone
     const checkExistingUser = async (field, value) => {
       if (value) {
         const existingUser = await User.findOne({ where: { [field]: value } });
         if (existingUser) {
           console.log(`User already exists with ${field}: ${value}`);
-          return true; // Indicate that the user already exists
+          return true;
         }
       }
       return false;
     };
 
-    // Check for existing users separately
     if (await checkExistingUser("email", email)) {
       return res
         .status(400)
@@ -548,7 +625,7 @@ const registerUser = async (req, res) => {
     }
 
     // Validate phone number (must be exactly 10 digits & cannot start with 0)
-    const phoneRegex = /^[1-9][0-9]{9}$/; // Starts with 1-9, followed by 9 digits
+    const phoneRegex = /^[1-9][0-9]{9}$/;
     if (phone && !phoneRegex.test(phone)) {
       console.log(`Invalid phone number entered: ${phone}`);
       return res.status(400).json({
@@ -566,6 +643,7 @@ const registerUser = async (req, res) => {
         await sendOtpViaSms(phone, generatedOTP);
         return res.status(200).json({ message: "OTP sent to phone", phone });
       } catch (error) {
+        console.error("Failed to send OTP via SMS:", error);
         return res.status(500).json({ message: "Failed to send OTP via SMS" });
       }
     }
@@ -580,7 +658,7 @@ const registerUser = async (req, res) => {
         return res.status(400).json({ message });
       }
       console.log(`OTP verified successfully for ${phone}`);
-      otpStatus = "success"; // Update status to success
+      otpStatus = "success";
     }
 
     // Ensure required fields are not null after OTP verification
@@ -597,16 +675,13 @@ const registerUser = async (req, res) => {
 
     // Handle code based on userType
     let userCode = code;
-
-    // Set initial points before use
     let initialPoints = null;
 
     if (userType === "Doctor") {
-      userCode = (await generateCode())?.toString(); // ✅ Fix: Ensure a string
+      userCode = (await generateCode()).toString();
       console.log(`Generated code for Doctor: ${userCode}`);
-      initialPoints = 500; // Doctors get 500 points
-    } else if (userType !== "Doctor" && userType === "OtherUser" && code) {
-      // Verify if the provided code belongs to a registered doctor
+      initialPoints = 500;
+    } else if (userType === "OtherUser" && code) {
       const doctor = await User.findOne({
         where: { code, userType: "Doctor" },
       });
@@ -622,7 +697,7 @@ const registerUser = async (req, res) => {
       console.log(
         `Code verification passed. User linked to Doctor with code: ${code}`
       );
-      initialPoints = 50; // Assign 50 reward points to OtherUser
+      initialPoints = 50;
     }
 
     // Create new user
@@ -649,7 +724,29 @@ const registerUser = async (req, res) => {
       return res.status(500).json({ message: "User creation failed" });
     }
 
-    // Generate token
+    // Send welcome email if the user is a Doctor
+    if (userType === "Doctor" && email) {
+      const emailSubject = "Welcome to Breboot App!";
+      const { text, html } = getWelcomeEmailContent(name, userCode);
+      console.log("Before sending mail to:", email);
+      try {
+        await sendMail(email, emailSubject, text, html);
+        console.log(`Welcome email sent successfully to Dr. ${name} at ${email}`);
+      } catch (emailError) {
+        console.error(`Failed to send welcome email to ${email}:`, emailError);
+      }
+    }
+
+    if (userType === "Doctor") {
+      try {
+        await sendWelcomeSms(phone, name, userCode);
+        console.log(`Welcome SMS sent successfully to Dr. ${name} at ${phone}`);
+      } catch (smsError) {
+        console.error(`Failed to send Welcome SMS to ${phone}:`, smsError);
+      }
+    }
+
+    // Generate token using JWT_SECRET from .env
     const token = jwt.sign(
       { id: newUser.id, userType: newUser.userType },
       process.env.JWT_SECRET,
@@ -659,7 +756,7 @@ const registerUser = async (req, res) => {
     console.log("Registration successful. Sending response...");
     return res.status(201).json({
       message: "User registered successfully",
-      status: otpStatus, // Send OTP status here
+      status: otpStatus,
       token,
     });
   } catch (error) {
@@ -692,14 +789,12 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       console.log(
-        `User not registered with ${email ? "email" : "phone"}: ${
-          email || phone
+        `User not registered with ${email ? "email" : "phone"}: ${email || phone
         }`
       );
       return res.status(404).json({
-        message: `User is not registered with this ${
-          email ? "email" : "phone"
-        }.`,
+        message: `User is not registered with this ${email ? "email" : "phone"
+          }.`,
       });
     }
 
@@ -830,7 +925,7 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    console.log("req data",req.body,req.params,req.query)
+    console.log("req data", req.body, req.params, req.query)
     const { token } = req.params;
     const { newPassword, confirmNewPassword } = req.body;
     const expires = new Date(req.query.expires).getTime(); // Convert ISO to timestamp
