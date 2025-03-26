@@ -436,6 +436,34 @@ The Breboot Team
   };
 };
 
+const getPaymentConfirmationEmailContent = (name, orderId, transactionId) => {
+  return {
+    text: `
+Dear Admin,
+
+A new payment has been submitted by ${name}.
+
+Order ID: ${orderId}  
+Transaction ID: ${transactionId}
+
+Please review and verify the payment at your earliest convenience.
+
+Best regards,  
+The Breboot System
+    `,
+    html: `
+      <h2>Dear Admin,</h2>
+      <p>A new payment has been submitted by <strong>${name}</strong>.</p>
+      <p><strong>Order ID:</strong> ${orderId}<br>
+      <strong>Transaction ID:</strong> ${transactionId}</p>
+      <p>Please review and verify the payment at your earliest convenience.</p>
+      <p><strong>Best regards,</strong><br>The Breboot System</p>
+    `,
+  };
+};
+
+
+
 // Send OTP via SMS
 async function sendOtpViaSms(phone, otp) {
   const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
@@ -1079,7 +1107,6 @@ const createOrder = async (req, res) => {
 
 const createPayment = async (req, res) => {
   try {
-    // Use Multer middleware for file upload
     upload("payments").single("paymentScreenshot")(req, res, async (err) => {
       if (err) {
         return res
@@ -1087,12 +1114,9 @@ const createPayment = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      // Extract token from header
       const token = req.headers.authorization?.split(" ")[1];
       if (!token) {
-        return res
-          .status(401)
-          .json({ error: "Unauthorized: No token provided" });
+        return res.status(401).json({ error: "Unauthorized: No token provided" });
       }
 
       let userId;
@@ -1100,9 +1124,7 @@ const createPayment = async (req, res) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded?.id;
       } catch (error) {
-        return res
-          .status(401)
-          .json({ error: "Unauthorized: Invalid or expired token" });
+        return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
       }
 
       console.log("Request body:", req.body);
@@ -1110,35 +1132,22 @@ const createPayment = async (req, res) => {
 
       const { transactionId, orderId, name, image, address } = req.body;
 
-      // Validate input
       if (!transactionId || !orderId || !req.file || !name || !image) {
-        return res.status(400).json({
-          error: "Transaction ID, Order ID, and image are required.",
-        });
+        return res.status(400).json({ error: "Transaction ID, Order ID, and image are required." });
       }
 
-      // Check if order exists and belongs to the user
       const order = await Orders.findOne({ where: { orderId, userId } });
       if (!order) {
-        return res
-          .status(404)
-          .json({ error: "Order not found or does not belong to the user." });
+        return res.status(404).json({ error: "Order not found or does not belong to the user." });
       }
 
-      // Check if transactionId is unique
-      const existingPayment = await Payment.findOne({
-        where: { transactionId },
-      });
+      const existingPayment = await Payment.findOne({ where: { transactionId } });
       if (existingPayment) {
-        return res
-          .status(400)
-          .json({ error: "Transaction ID already exists." });
+        return res.status(400).json({ error: "Transaction ID already exists." });
       }
 
-      // Store file path
       const paymentScreenshot = `assets/images/payments/${req.file.filename}`;
 
-      // Create payment record
       const payment = await Payment.create({
         userId,
         orderId,
@@ -1149,12 +1158,20 @@ const createPayment = async (req, res) => {
         address,
       });
 
-      // Update the Orders table to include paymentId
-      const ordersupdate = await Orders.update(
-        { paymentId: payment.id },
-        { where: { orderId } }
-      );
-      console.log("updated order", ordersupdate);
+      await Orders.update({ paymentId: payment.id }, { where: { orderId } });
+
+      console.log("Payment created successfully:", payment);
+
+      // **Send Payment Confirmation Email**
+        const emailSubject = "Payment Submission Received - Breboot App";
+        const { text, html } = getPaymentConfirmationEmailContent(name, orderId, transactionId);
+
+        try {
+          await sendMail("no-reply@giantinfotech.in", emailSubject, text, html);
+          console.log(`Payment confirmation email sent successfully`);
+        } catch (emailError) {
+          console.error(`Failed to send payment confirmation email to :`, emailError);
+        }
 
       return res.status(201).json({
         message: "Payment submitted successfully. Awaiting verification.",
@@ -1166,6 +1183,7 @@ const createPayment = async (req, res) => {
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
+
 
 module.exports = {
   registerUser,
