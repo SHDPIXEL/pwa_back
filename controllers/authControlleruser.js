@@ -17,7 +17,7 @@ const Orders = require("../models/order");
 const Products = require("../models/products");
 const moment = require("moment");
 const upload = require("../middleware/uploadMiddleware");
-const { sendMail } = require('../utils/mailer');
+const { sendMail } = require("../utils/mailer");
 
 // Temporary in-memory OTP store
 const otpStore = {};
@@ -172,12 +172,12 @@ const senderIds = ["CELAGE", "CELANX", "CELGNX"];
 //                     <img src="https://user.cholinationdrive.needsunleashed.com/assets/Logo-RadocjPK.png" alt="Breboot Logo">
 //                 </div>
 //             </div>
-            
+
 //             <!-- Tax Invoice Heading -->
 //             <div style="text-align: center; font-size: 1.2rem; font-weight: 700; margin-top: 0.2rem; color: var(--text-primary); padding-bottom: 1rem; border-bottom: 2px solid var(--border);">
 //                 Tax Invoice
 //             </div>
-            
+
 //             <!-- Supplier & Customer Info -->
 //             <div class="info-container" style="display: flex; justify-content: space-between; gap: 2rem;">
 //                 <div class="supplier-info" style="flex: 1; text-align: left;">
@@ -191,7 +191,6 @@ const senderIds = ["CELAGE", "CELANX", "CELGNX"];
 //                     <p><strong>Address:</strong> ${customerAddress}</p>
 //                 </div>
 //             </div>
-
 
 //             <!-- Invoice Details (Moved Below Supplier & Customer Info) -->
 //             <div class="invoice-details-container">
@@ -242,7 +241,7 @@ const senderIds = ["CELAGE", "CELANX", "CELGNX"];
 //                     <span>${amountInWords}</span>
 //                 </div>
 //             </div>
-            
+
 //             <!-- Additional Invoice Notes -->
 //             <table style="width: 100%; border-collapse: collapse; margin-top: 2rem; border: 1px solid var(--border);">
 //                 <tr>
@@ -362,7 +361,7 @@ const transporter = nodemailer.createTransport({
 //                 <div style="display: flex; justify-content: center; align-items: center; margin-top: 60px;">
 //                   <p style="margin: 0; font-size: 40px; font-weight: 600; text-align: center; color: #f7941d; word-spacing: 12px;">
 //                     ${otp.split("").join(" ")}
-//                   </p>  
+//                   </p>
 //                 </div>
 //               </div>
 //             </div>
@@ -463,7 +462,6 @@ async function sendOtpViaSms(phone, otp) {
   }
 }
 
-
 async function sendWelcomeSms(phone, name, referralCode) {
   const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
   // const message = `Welcome to Breboot App - B Ready to Reboot! Dear Dr.${name},Welcome! You've earned 500 Breboot points and a referral code. Join weekly challenges, enjoy discounts, earn rewards, and get a free diet plan. Register now! Breboot Team CELAGENEX.`;
@@ -471,7 +469,7 @@ async function sendWelcomeSms(phone, name, referralCode) {
 Dear Dr.${name},
 Welcome! You've earned 500 Breboot points and a referral code. Join weekly challenges, enjoy discounts, earn rewards, and get free diet plan. Register now!
 Breboot Team
-CELAGENEX.`
+CELAGENEX.`;
 
   const apiUrl =
     process.env.OTP_BASE_SEND +
@@ -484,7 +482,9 @@ CELAGENEX.`
     console.log("SMS API Response:", response.data); // Log full response data
 
     if (response.status === 200 && response.data.includes("Success")) {
-      console.log(`Welcome SMS sent to Dr. ${name} at ${phone} via senderId ${senderId}`);
+      console.log(
+        `Welcome SMS sent to Dr. ${name} at ${phone} via senderId ${senderId}`
+      );
       return "Welcome SMS sent successfully";
     } else {
       console.error("Error sending Welcome SMS:", response.data);
@@ -495,7 +495,6 @@ CELAGENEX.`
     throw new Error("Failed to send Welcome SMS");
   }
 }
-
 
 const sendResetPasswordEmail = async ({ to, subject, text }) => {
   try {
@@ -590,7 +589,8 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const { name, phone, email, gender, status, userType, state, otp } = req.body;
+    const { name, phone, email, gender, status, userType, state, otp } =
+      req.body;
     let { code } = req.body;
 
     // Ensure at least one of phone or email is provided
@@ -731,7 +731,9 @@ const registerUser = async (req, res) => {
       console.log("Before sending mail to:", email);
       try {
         await sendMail(email, emailSubject, text, html);
-        console.log(`Welcome email sent successfully to Dr. ${name} at ${email}`);
+        console.log(
+          `Welcome email sent successfully to Dr. ${name} at ${email}`
+        );
       } catch (emailError) {
         console.error(`Failed to send welcome email to ${email}:`, emailError);
       }
@@ -789,12 +791,14 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       console.log(
-        `User not registered with ${email ? "email" : "phone"}: ${email || phone
+        `User not registered with ${email ? "email" : "phone"}: ${
+          email || phone
         }`
       );
       return res.status(404).json({
-        message: `User is not registered with this ${email ? "email" : "phone"
-          }.`,
+        message: `User is not registered with this ${
+          email ? "email" : "phone"
+        }.`,
       });
     }
 
@@ -807,6 +811,14 @@ const loginUser = async (req, res) => {
           message:
             "Invalid phone number. Must be 10 digits and cannot start with 0.",
         });
+      }
+
+      // Handle dummy phone number case
+      if (phone === "0000000000") {
+        storeOTP(phone, "000000");
+        return res
+          .status(200)
+          .json({ message: "OTP for dummy user is 000000", phone });
       }
 
       if (phone && !otp) {
@@ -925,14 +937,16 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    console.log("req data", req.body, req.params, req.query)
+    console.log("req data", req.body, req.params, req.query);
     const { token } = req.params;
     const { newPassword, confirmNewPassword } = req.body;
     const expires = new Date(req.query.expires).getTime(); // Convert ISO to timestamp
 
     // Validate expiration
     if (!expires || Date.now() > expires) {
-      return res.status(400).json({ message: "This link has expired. Please request a new one." });
+      return res
+        .status(400)
+        .json({ message: "This link has expired. Please request a new one." });
     }
 
     if (!newPassword || !confirmNewPassword)
@@ -947,7 +961,8 @@ const resetPassword = async (req, res) => {
     // Find user with the hashed token
     const user = await AppUser.findOne({ resetPasswordToken: hashedToken });
 
-    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired token" });
 
     // Hash new password
     const salt = await bcrypt.genSalt(10);
