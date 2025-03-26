@@ -29,6 +29,7 @@ const generateInvoicePDF = async ({
   productinfo,
   amountInWords,
   customerAddress,
+  customerGstNumber
 }) => {
   try {
     const invoiceHtml = `
@@ -184,6 +185,7 @@ const generateInvoicePDF = async ({
                     <p><strong>Name:</strong> ${name}</p>
                     <p><strong>Phone:</strong> ${phoneNumber}</p>
                     <p><strong>Address:</strong> ${customerAddress}</p>
+                    <p><strong>Customer GSTIN:</strong> ${customerGstNumber}</p>
                 </div>
             </div>
 
@@ -1382,6 +1384,32 @@ const updatePaymentStatus = async (req, res) => {
         // Convert amount to words
         const amountInWords = numberToWords.toWords(order.amount);
 
+        // Parse the address JSON if it's a string
+        let parsedAddress;
+        try {
+          parsedAddress = JSON.parse(payment.address);
+        } catch (error) {
+          console.error("Error parsing address:", error);
+          parsedAddress = {}; // Default to an empty object if parsing fails
+        }
+
+        // Construct the formatted address
+        const formattedAddress = `${parsedAddress.address || ""}, ${
+          parsedAddress.city || ""
+        }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
+
+        // Extract GST Number
+        const customerGstNumber = parsedAddress.gstNumber || "N/A"; // Default to "N/A" if missing
+
+        console.log("Generating invoice PDF for:", {
+          userId: payment.userId,
+          orderId: payment.orderId,
+          amount: order.amount,
+          transactionId: payment.transactionId,
+          address: formattedAddress,
+          gstNumber:customerGstNumber
+        });
+
         // Generate Invoice PDF in the background
         generateInvoicePDF({
           userId: payment.userId,
@@ -1394,7 +1422,8 @@ const updatePaymentStatus = async (req, res) => {
           amount: order.amount,
           productinfo: payment.name,
           quantity: order.quantity,
-          customerAddress: payment.address,
+          customerAddress: formattedAddress,
+          customerGstNumber: customerGstNumber, // Include GST Number
           amountInWords: amountInWords,
         })
           .then(() => console.log("Invoice PDF generated successfully"))

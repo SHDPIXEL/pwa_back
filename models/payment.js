@@ -69,6 +69,7 @@ const Payment = sequelize.define(
         },
       },
     },
+    
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields
