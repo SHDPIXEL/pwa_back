@@ -1321,22 +1321,37 @@ const getAllOrders = async (req, res) => {
     // Fetch all orders
     const orders = await Orders.findAll();
 
-    // Fetch product details manually
-    const ordersWithProductNames = await Promise.all(
+    const ordersWithDetails = await Promise.all(
       orders.map(async (order) => {
+        // Fetch product name
         const product = await Products.findOne({
           where: { id: order.productId },
           attributes: ["name"],
         });
 
+        // Fetch payment details
+        const payment = await Payment.findOne({
+          where: { orderId: order.orderId },
+          attributes: ["address"], // Fetch only the address field
+        });
+
+        const user = await User.findOne({
+          where: { id: order.userId },
+          attributes: ["name", "phone", "email"]
+        })
+
         return {
           ...order.toJSON(),
-          productName: product ? product.name : "Unknown Product", // If no product found
+          productName: product ? product.name : "Unknown Product",
+          address: payment ? payment.address : null, // Add address (null if not found)
+          userName: user ? user.name : "Unknown User",
+          userPhone: user ? user.phone : null,
+          userEmail: user ? user.email : null,
         };
       })
     );
-
-    return res.status(200).json({ orders: ordersWithProductNames });
+    console.log("Data send to frontned", ordersWithDetails)
+    return res.status(200).json({ orders: ordersWithDetails });
   } catch (error) {
     console.error("Error fetching orders:", error);
     return res.status(500).json({ error: "Internal Server Error" });

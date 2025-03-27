@@ -23,8 +23,9 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 }));
+
 // Use CORS middleware for all routes
-// app.use(cors()); // Enable CORS for all routes
+//  app.use(cors()); // Enable CORS for all routes
 
 
 // Use Helmet for security
@@ -35,7 +36,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com", "data:"], // ✅ Allow images from your frontend
+      imgSrc: ["'self'", "https://admin.breboot.celagenex.com","*", "https://user.breboot.celagenex.com", "data:"], // ✅ Allow images from your frontend
     },
   },
   crossOriginResourcePolicy: { policy: "cross-origin" }, // ✅ Allow external images
