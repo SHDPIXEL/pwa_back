@@ -653,12 +653,11 @@ const registerUser = async (req, res) => {
     }
 
     // Validate phone number (must be exactly 10 digits & cannot start with 0)
-    const phoneRegex = /^[1-9][0-9]{9}$/;
-    if (phone && !phoneRegex.test(phone)) {
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(phone) && phone !== "0000000000") {
       console.log(`Invalid phone number entered: ${phone}`);
       return res.status(400).json({
-        message:
-          "Invalid phone number. Must be 10 digits and cannot start with 0.",
+        message: "Invalid phone number. Must be exactly 10 digits.",
       });
     }
 
@@ -819,34 +818,39 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       console.log(
-        `User not registered with ${email ? "email" : "phone"}: ${
-          email || phone
+        `User not registered with ${email ? "email" : "phone"}: ${email || phone
         }`
       );
       return res.status(404).json({
-        message: `User is not registered with this ${
-          email ? "email" : "phone"
-        }.`,
+        message: `User is not registered with this ${email ? "email" : "phone"
+          }.`,
       });
     }
 
     if (phone) {
-      // Validate phone number
-      const phoneRegex = /^[1-9][0-9]{9}$/;
-      if (!phoneRegex.test(phone)) {
-        console.log(`Invalid phone number entered: ${phone}`);
-        return res.status(400).json({
-          message:
-            "Invalid phone number. Must be 10 digits and cannot start with 0.",
-        });
-      }
 
-      // Handle dummy phone number case
       if (phone === "0000000000") {
         storeOTP(phone, "000000");
-        return res
-          .status(200)
-          .json({ message: "OTP for dummy user is 000000", phone });
+        console.log("Dummy user detected, skipping OTP verification.");
+
+        user = await User.findOne({ where: { phone } });
+        if (!user) {
+          user = await User.create({
+            name: "Test User",
+            phone: "0000000000",
+            email: "test@something.com",
+            userType: "Doctor",
+            password: "000000",
+          });
+        }
+      }
+
+      const phoneRegex = /^[1-9][0-9]{9}$/;
+      if (!phoneRegex.test(phone) && phone !== "0000000000") {
+        console.log(`Invalid phone number entered: ${phone}`);
+        return res.status(400).json({
+          message: "Invalid phone number. Must be 10 digits and cannot start with 0.",
+        });
       }
 
       if (phone && !otp) {
@@ -1163,15 +1167,15 @@ const createPayment = async (req, res) => {
       console.log("Payment created successfully:", payment);
 
       // **Send Payment Confirmation Email**
-        const emailSubject = "Payment Submission Received - Breboot App";
-        const { text, html } = getPaymentConfirmationEmailContent(name, orderId, transactionId);
+      const emailSubject = "Payment Submission Received - Breboot App";
+      const { text, html } = getPaymentConfirmationEmailContent(name, orderId, transactionId);
 
-        try {
-          await sendMail("no-reply@giantinfotech.in", emailSubject, text, html);
-          console.log(`Payment confirmation email sent successfully`);
-        } catch (emailError) {
-          console.error(`Failed to send payment confirmation email to :`, emailError);
-        }
+      try {
+        await sendMail("no-reply@giantinfotech.in", emailSubject, text, html);
+        console.log(`Payment confirmation email sent successfully`);
+      } catch (emailError) {
+        console.error(`Failed to send payment confirmation email to :`, emailError);
+      }
 
       return res.status(201).json({
         message: "Payment submitted successfully. Awaiting verification.",
