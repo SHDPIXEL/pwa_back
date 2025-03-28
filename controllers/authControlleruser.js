@@ -1083,10 +1083,11 @@ const createOrder = async (req, res) => {
     }
 
     // Generate unique orderId
-    const orderId = `ORD-${uuidv4().slice(0, 8).toUpperCase()}`;
+    const orderDate = moment().format("YYYY-MM-DD HH:mm:ss");
 
-    // Get current date-time in DD-MM-YYYY hh:mm:ss AM/PM format
-    const orderDate = moment().format("DD-MM-YYYY hh:mm:ss A");
+
+    // // Get current date-time in DD-MM-YYYY hh:mm:ss AM/PM format
+    // const orderDate = moment().format("DD-MM-YYYY hh:mm:ss A");
 
     // Create order
     const order = await Orders.create({

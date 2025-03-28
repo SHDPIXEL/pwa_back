@@ -32,7 +32,8 @@ const {
   getCompletedPaymentsGraph,
   getAllPayments,//allpayments
   getAllOrders,//allorders
-  updatePaymentStatus
+  updatePaymentStatus,
+  getAllOrdersWithPayments
 } = require("../controllers/adminController");
 const { route } = require("./userRoutes");
 
@@ -114,6 +115,7 @@ router.get("/getPayments",getAllPayments)
 //getAllOrders
 router.get("/getOrders",getAllOrders)
 router.put("/updatePaymentStatus", updatePaymentStatus);
+router.get("/excel_data", getAllOrdersWithPayments);
 
 
 module.exports = router;

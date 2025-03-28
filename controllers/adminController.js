@@ -16,6 +16,8 @@ const path = require("path");
 const numberToWords = require("number-to-words");
 const puppeteer = require("puppeteer");
 
+const BASE_URL = "http://192.168.1.11:4040"; // Set your backend URL
+
 const generateInvoicePDF = async ({
   userId,
   name,
@@ -1337,7 +1339,7 @@ const getAllOrders = async (req, res) => {
 
         const user = await User.findOne({
           where: { id: order.userId },
-          attributes: ["name", "phone", "email"]
+          attributes: ["name", "phone", "email","state"]
         })
 
         return {
@@ -1347,6 +1349,7 @@ const getAllOrders = async (req, res) => {
           userName: user ? user.name : "Unknown User",
           userPhone: user ? user.phone : null,
           userEmail: user ? user.email : null,
+          userState: user ? user.state : null,
         };
       })
     );
@@ -1456,6 +1459,70 @@ const updatePaymentStatus = async (req, res) => {
   }
 };
 
+const getAllOrdersWithPayments = async (req, res) => {
+  try {
+    const ordersWithPayments = await Orders.findAll({
+      include: [
+        {
+          model: Payment,
+          attributes: ["transactionId", "paymentStatus", "paymentScreenshot"],
+        },
+      ],
+      attributes: [
+        "orderId",
+        "userId",
+        "productId",
+        "quantity",
+        "amount",
+        "status",
+        "orderDate",
+      ],
+    });
+
+    if (!ordersWithPayments.length) {
+      return res.status(404).json({ message: "No orders found" });
+    }
+
+    // Fetch user details separately for each order
+    const response = await Promise.all(
+      ordersWithPayments.map(async (order) => {
+        const user = await User.findOne({
+          where: { id: order.userId },
+          attributes: ["name", "phone", "email", "gender", "status", "userType", "code", "state"], // Required user fields
+        });
+
+        return {
+          orderId: order.orderId,
+          userId: order.userId,
+          name: user?.name || null,
+          phone: user?.phone || null,
+          email: user?.email || null,
+          gender: user?.gender || null,
+          status: user?.status || null,
+          userType: user?.userType || null,
+          code: user?.code || null,
+          state: user?.state || null,
+          productId: order.productId,
+          quantity: order.quantity,
+          amount: order.amount,
+          orderStatus: order.status,
+          orderDate: order.orderDate,
+          transactionId: order.Payment?.transactionId || null,
+          paymentStatus: order.Payment?.paymentStatus || null,
+          paymentScreenshot: order.Payment?.paymentScreenshot
+            ? `${BASE_URL}/${order.Payment.paymentScreenshot}`
+            : null, // Prepend backend URL if screenshot exists
+        };
+      })
+    );
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Error fetching orders with user data:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 module.exports = {
   createWeek, //{weeks}
   getAllWeeks,
@@ -1488,4 +1555,5 @@ module.exports = {
   getAllPayments, //allpayments
   getAllOrders, //allorders
   updatePaymentStatus,
+  getAllOrdersWithPayments
 };
