@@ -1465,7 +1465,7 @@ const getAllOrdersWithPayments = async (req, res) => {
       include: [
         {
           model: Payment,
-          attributes: ["transactionId", "paymentStatus", "paymentScreenshot"],
+          attributes: ["transactionId", "paymentStatus", "paymentScreenshot","address"],
         },
       ],
       attributes: [
@@ -1476,6 +1476,7 @@ const getAllOrdersWithPayments = async (req, res) => {
         "amount",
         "status",
         "orderDate",
+        "createdAt",
       ],
     });
 
@@ -1497,6 +1498,7 @@ const getAllOrdersWithPayments = async (req, res) => {
           name: user?.name || null,
           phone: user?.phone || null,
           email: user?.email || null,
+          address: order.Payment?.address,
           gender: user?.gender || null,
           status: user?.status || null,
           userType: user?.userType || null,
@@ -1506,7 +1508,7 @@ const getAllOrdersWithPayments = async (req, res) => {
           quantity: order.quantity,
           amount: order.amount,
           orderStatus: order.status,
-          orderDate: order.orderDate,
+          orderDate: order.createdAt,
           transactionId: order.Payment?.transactionId || null,
           paymentStatus: order.Payment?.paymentStatus || null,
           paymentScreenshot: order.Payment?.paymentScreenshot
