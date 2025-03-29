@@ -547,8 +547,8 @@ const updateChallenge = async (req, res) => {
           typeof challenge.challenge_images === "string"
             ? JSON.parse(challenge.challenge_images)
             : Array.isArray(challenge.challenge_images)
-            ? challenge.challenge_images
-            : [];
+              ? challenge.challenge_images
+              : [];
       } catch (error) {
         console.error("Invalid existing image format:", error);
         return res.status(500).json({ error: "Invalid existing image format" });
@@ -1339,7 +1339,7 @@ const getAllOrders = async (req, res) => {
 
         const user = await User.findOne({
           where: { id: order.userId },
-          attributes: ["name", "phone", "email","state"]
+          attributes: ["name", "phone", "email", "state"]
         })
 
         return {
@@ -1412,9 +1412,8 @@ const updatePaymentStatus = async (req, res) => {
         }
 
         // Construct the formatted address
-        const formattedAddress = `${parsedAddress.address || ""}, ${
-          parsedAddress.city || ""
-        }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
+        const formattedAddress = `${parsedAddress.address || ""}, ${parsedAddress.city || ""
+          }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
 
         // Extract GST Number
         const customerGstNumber = parsedAddress.gstNumber || "N/A"; // Default to "N/A" if missing
@@ -1425,7 +1424,7 @@ const updatePaymentStatus = async (req, res) => {
           amount: order.amount,
           transactionId: payment.transactionId,
           address: formattedAddress,
-          gstNumber:customerGstNumber
+          gstNumber: customerGstNumber
         });
 
         // Generate Invoice PDF in the background
@@ -1465,7 +1464,7 @@ const getAllOrdersWithPayments = async (req, res) => {
       include: [
         {
           model: Payment,
-          attributes: ["transactionId", "paymentStatus", "paymentScreenshot","address"],
+          attributes: ["transactionId", "paymentStatus", "paymentScreenshot", "address"],
         },
       ],
       attributes: [
@@ -1489,16 +1488,41 @@ const getAllOrdersWithPayments = async (req, res) => {
       ordersWithPayments.map(async (order) => {
         const user = await User.findOne({
           where: { id: order.userId },
-          attributes: ["name", "phone", "email", "gender", "status", "userType", "code", "state"], // Required user fields
+          attributes: [
+            "name",
+            "phone",
+            "email",
+            "gender",
+            "status",
+            "userType",
+            "code",
+            "state",
+          ],
         });
 
-        return {
+        let parsedAddress = {};
+        if (order.Payment?.address) {
+          try {
+            parsedAddress = JSON.parse(order.Payment.address);
+          } catch (error) {
+            console.error("Error parsing address JSON:", error);
+          }}
+
+          const fullAddressParts = [
+            parsedAddress.address || "",
+            parsedAddress.landMark || "",
+            parsedAddress.state || "",
+            parsedAddress.pincode || ""
+          ].filter(Boolean)
+
+        const orderData = {
           orderId: order.orderId,
           userId: order.userId,
           name: user?.name || null,
           phone: user?.phone || null,
           email: user?.email || null,
-          address: order.Payment?.address,
+          address: fullAddressParts.join(", "),
+          GST: parsedAddress.gstNumber || "",
           gender: user?.gender || null,
           status: user?.status || null,
           userType: user?.userType || null,
@@ -1515,10 +1539,13 @@ const getAllOrdersWithPayments = async (req, res) => {
             ? `${BASE_URL}/${order.Payment.paymentScreenshot}`
             : null, // Prepend backend URL if screenshot exists
         };
+        return orderData;
       })
     );
+    console.log("Final Response:", response); // Log full response before sending
 
     res.status(200).json(response);
+
   } catch (error) {
     console.error("Error fetching orders with user data:", error);
     res.status(500).json({ message: "Internal Server Error" });
