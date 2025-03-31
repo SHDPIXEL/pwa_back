@@ -1081,11 +1081,10 @@ const createOrder = async (req, res) => {
     if (!product.inStock) {
       return res.status(400).json({ error: "Product is out of stock." });
     }
-
+    
+    const orderId = `ORD-${uuidv4().slice(0, 8).toUpperCase()}`;
     // Generate unique orderId
     const orderDate = moment().format("YYYY-MM-DD HH:mm:ss");
-
-
     // // Get current date-time in DD-MM-YYYY hh:mm:ss AM/PM format
     // const orderDate = moment().format("DD-MM-YYYY hh:mm:ss A");
 
