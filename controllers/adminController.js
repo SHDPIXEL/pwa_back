@@ -31,7 +31,7 @@ const generateInvoicePDF = async ({
   productinfo,
   amountInWords,
   customerAddress,
-  customerGstNumber
+  customerGstNumber,
 }) => {
   try {
     const invoiceHtml = `
@@ -547,8 +547,8 @@ const updateChallenge = async (req, res) => {
           typeof challenge.challenge_images === "string"
             ? JSON.parse(challenge.challenge_images)
             : Array.isArray(challenge.challenge_images)
-              ? challenge.challenge_images
-              : [];
+            ? challenge.challenge_images
+            : [];
       } catch (error) {
         console.error("Invalid existing image format:", error);
         return res.status(500).json({ error: "Invalid existing image format" });
@@ -575,7 +575,7 @@ const updateChallenge = async (req, res) => {
         updatedImages[2] = `assets/images/challenges/${req.files["challenge_image3"][0].filename}`;
       }
 
-      console.log("Final updated images:", updatedImages);
+      // console.log("Final updated images:", updatedImages);
 
       // ✅ Update Challenge with Correct Image Array
       await challenge.update({
@@ -934,7 +934,7 @@ const getAllChallengeForms = async (req, res) => {
       return { ...challenge.get(), mediaFiles };
     });
 
-    console.log("Fetched Challenges:", formattedChallenges.length);
+    // console.log("Fetched Challenges:", formattedChallenges.length);
 
     res.status(200).json(formattedChallenges);
   } catch (error) {
@@ -958,8 +958,8 @@ const updateChallengeForm = async (req, res) => {
           .json({ error: `File upload error: ${err.message}` });
       }
 
-      console.log("Request Body:", req.body);
-      console.log("Uploaded Files:", req.files);
+      // console.log("Request Body:", req.body);
+      // console.log("Uploaded Files:", req.files);
 
       const { id } = req.params;
       let { name, phone, remark, mediaType, isVerified } = req.body;
@@ -1009,7 +1009,7 @@ const updateChallengeForm = async (req, res) => {
 
       // Convert isVerified to an integer
       isVerified = parseInt(isVerified, 10);
-      console.log("Parsed isVerified:", isVerified, typeof isVerified);
+      // console.log("Parsed isVerified:", isVerified, typeof isVerified);
 
       // Handle challenge status update
       if (isVerified === 2) {
@@ -1113,12 +1113,12 @@ const getRedeemedRewardsGraph = async (req, res) => {
     const today = moment().startOf("day");
     const sevenDaysAgo = moment(today).subtract(6, "days");
 
-    console.log(
-      "Fetching redemptions from:",
-      sevenDaysAgo.toDate(),
-      "to",
-      today.endOf("day").toDate()
-    );
+    // console.log(
+    //   "Fetching redemptions from:",
+    //   sevenDaysAgo.toDate(),
+    //   "to",
+    //   today.endOf("day").toDate()
+    // );
 
     // Fetch redeemed rewards from the last 7 days, including today
     const redeemedRewards = await Redeem.findAll({
@@ -1139,7 +1139,7 @@ const getRedeemedRewardsGraph = async (req, res) => {
       };
     });
 
-    console.log("Redeemed rewards count:", redeemedRewards.length);
+    // console.log("Redeemed rewards count:", redeemedRewards.length);
 
     // Count redemptions for each day
     redeemedRewards.forEach((reward) => {
@@ -1339,21 +1339,50 @@ const getAllOrders = async (req, res) => {
 
         const user = await User.findOne({
           where: { id: order.userId },
-          attributes: ["name", "phone", "email", "state"]
-        })
+          attributes: ["name", "phone", "email"],
+        });
+
+        // Parse and format address
+        let formattedAddress = null;
+        let paymentState = null; // Store the state from payment address
+
+        if (payment && payment.address) {
+          let addressObj;
+
+          try {
+            // Try parsing the address if it's a JSON string
+            addressObj = JSON.parse(payment.address);
+          } catch (error) {
+            // If parsing fails, assume it's already a string
+            addressObj = payment.address;
+          }
+
+          if (typeof addressObj === "object") {
+            const { address, city, state, pincode, landMark } = addressObj;
+            formattedAddress = `${address || ""}, ${
+              landMark ? landMark + ", " : ""
+            }${city || ""}, ${state || ""} - ${pincode || ""}`
+              .replace(/, ,/g, ",") // Remove extra commas
+              .trim();
+
+            paymentState = state || null; // Store state from payment address
+          } else {
+            formattedAddress = addressObj; // If it's already a string, use it directly
+          }
+        }
 
         return {
           ...order.toJSON(),
           productName: product ? product.name : "Unknown Product",
-          address: payment ? payment.address : null, // Add address (null if not found)
+          address: formattedAddress, // Properly formatted address
           userName: user ? user.name : "Unknown User",
           userPhone: user ? user.phone : null,
           userEmail: user ? user.email : null,
-          userState: user ? user.state : null,
+          userState: paymentState, // Use state from payment address instead of user state
         };
       })
     );
-    console.log("Data send to frontned", ordersWithDetails)
+
     return res.status(200).json({ orders: ordersWithDetails });
   } catch (error) {
     console.error("Error fetching orders:", error);
@@ -1412,8 +1441,9 @@ const updatePaymentStatus = async (req, res) => {
         }
 
         // Construct the formatted address
-        const formattedAddress = `${parsedAddress.address || ""}, ${parsedAddress.city || ""
-          }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
+        const formattedAddress = `${parsedAddress.address || ""}, ${
+          parsedAddress.city || ""
+        }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
 
         // Extract GST Number
         const customerGstNumber = parsedAddress.gstNumber || "N/A"; // Default to "N/A" if missing
@@ -1424,7 +1454,7 @@ const updatePaymentStatus = async (req, res) => {
           amount: order.amount,
           transactionId: payment.transactionId,
           address: formattedAddress,
-          gstNumber: customerGstNumber
+          gstNumber: customerGstNumber,
         });
 
         // Generate Invoice PDF in the background
@@ -1464,7 +1494,12 @@ const getAllOrdersWithPayments = async (req, res) => {
       include: [
         {
           model: Payment,
-          attributes: ["transactionId", "paymentStatus", "paymentScreenshot", "address"],
+          attributes: [
+            "transactionId",
+            "paymentStatus",
+            "paymentScreenshot",
+            "address",
+          ],
         },
       ],
       attributes: [
@@ -1483,7 +1518,6 @@ const getAllOrdersWithPayments = async (req, res) => {
       return res.status(404).json({ message: "No orders found" });
     }
 
-    // Fetch user details separately for each order
     const response = await Promise.all(
       ordersWithPayments.map(async (order) => {
         const user = await User.findOne({
@@ -1500,20 +1534,45 @@ const getAllOrdersWithPayments = async (req, res) => {
           ],
         });
 
-        let parsedAddress = {};
-        if (order.Payment?.address) {
+        let formattedAddress = "";
+        let rawAddress = order.Payment?.address;
+
+        // console.log("rawaddress",rawAddress)
+
+        if (rawAddress) {
           try {
-            parsedAddress = JSON.parse(order.Payment.address);
+            // **Check if `rawAddress` is a stringified JSON**
+            if (typeof rawAddress === "string") {
+              rawAddress = rawAddress.trim();
+
+              // **Try parsing once**
+              let parsedAddress = JSON.parse(rawAddress);
+
+              // **If parsing gives another string, parse again (for double-encoded JSON)**
+              if (typeof parsedAddress === "string") {
+                parsedAddress = JSON.parse(parsedAddress);
+              }
+
+              // **Ensure parsedAddress is an object before extracting values**
+              if (typeof parsedAddress === "object" && parsedAddress !== null) {
+                formattedAddress = [
+                  parsedAddress.address || "",
+                  parsedAddress.city || "",
+                  parsedAddress.state || "",
+                  parsedAddress.pincode || "",
+                  parsedAddress.landMark || "",
+                ]
+                  .filter(Boolean)
+                  .join(", ");
+              } else {
+                formattedAddress = rawAddress; // If already formatted, use as is
+              }
+            }
           } catch (error) {
             console.error("Error parsing address JSON:", error);
-          }}
-
-          const fullAddressParts = [
-            parsedAddress.address || "",
-            parsedAddress.landMark || "",
-            parsedAddress.state || "",
-            parsedAddress.pincode || ""
-          ].filter(Boolean)
+            formattedAddress = rawAddress; // Fallback to raw address if parsing fails
+          }
+        }
 
         const orderData = {
           orderId: order.orderId,
@@ -1521,8 +1580,8 @@ const getAllOrdersWithPayments = async (req, res) => {
           name: user?.name || null,
           phone: user?.phone || null,
           email: user?.email || null,
-          address: fullAddressParts.join(", "),
-          GST: parsedAddress.gstNumber || "",
+          address: formattedAddress, // Fixed Address
+          GST: "",
           gender: user?.gender || null,
           status: user?.status || null,
           userType: user?.userType || null,
@@ -1537,15 +1596,14 @@ const getAllOrdersWithPayments = async (req, res) => {
           paymentStatus: order.Payment?.paymentStatus || null,
           paymentScreenshot: order.Payment?.paymentScreenshot
             ? `${BASE_URL}/${order.Payment.paymentScreenshot}`
-            : null, // Prepend backend URL if screenshot exists
+            : null,
         };
         return orderData;
       })
     );
-    console.log("Final Response:", response); // Log full response before sending
 
+    // console.log("Final Response:", response);
     res.status(200).json(response);
-
   } catch (error) {
     console.error("Error fetching orders with user data:", error);
     res.status(500).json({ message: "Internal Server Error" });
@@ -1584,5 +1642,5 @@ module.exports = {
   getAllPayments, //allpayments
   getAllOrders, //allorders
   updatePaymentStatus,
-  getAllOrdersWithPayments
+  getAllOrdersWithPayments,
 };
