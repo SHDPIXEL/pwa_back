@@ -179,9 +179,9 @@ const generateInvoicePDF = async ({
             <!-- Supplier & Customer Info -->
             <div class="info-container" style="display: flex; justify-content: space-between; gap: 2rem;">
                 <div class="supplier-info" style="flex: 1; text-align: left;">
-                    <p><strong>Supplier Name:</strong> Celagenex Pvt. Ltd.</p>
-                    <p><strong>Supplier Address:</strong> 123 Street, City, State, 456789</p>
-                    <p><strong>GSTIN:</strong> 29AABCT3518Q1ZV</p>
+                    <p><strong>Supplier Name:</strong> Celagenex Research (India) Pvt. Ltd.</p>
+                    <p><strong>Supplier Address:</strong> 6th Floor, Bellona Building, Hiranandani Estate, Thane, Mumbai - 400607</p>
+                    <p><strong>GSTIN:</strong> 0000000000000</p>
                 </div>
                 <div class="customer-info" style="flex: 1; text-align: right;">
                     <p><strong>Name:</strong> ${name}</p>
@@ -249,7 +249,7 @@ const generateInvoicePDF = async ({
                     <td style="width: 50%; padding: 8px; font-size: 0.875rem; color: var(--text-primary); vertical-align: bottom; text-align: right;">
                         <p>E&OE</p>
                         <p style="margin-top: 2rem;">Authorized Signatory</p>
-                        <p>Celagenex Pvt. Ltd.</p>
+                        <p>Celagenex Research (India) Pvt. Ltd.</p>
                     </td>
                 </tr>
             </table>
@@ -1414,16 +1414,22 @@ const updatePaymentStatus = async (req, res) => {
     payment.paymentStatus = status;
     await payment.save();
 
-    // If payment is verified, update the order status to "Completed"
-    if (status === "Verified") {
-      const order = await Orders.findOne({
-        where: { orderId: payment.orderId },
-      });
+    // Find the related order
+    const order = await Orders.findOne({
+      where: { orderId: payment.orderId },
+    });
 
-      if (order) {
+    if (order) {
+      if (status === "Verified") {
         order.status = "Completed";
-        await order.save();
+      } else if (status === "Rejected") {
+        order.status = "Cancelled";
+      }
 
+      await order.save();
+
+      // If payment is verified, generate invoice
+      if (status === "Verified") {
         // Fetch user details
         const user = await Users.findByPk(payment.userId);
         if (!user) return res.status(404).json({ message: "User not found." });
@@ -1437,7 +1443,7 @@ const updatePaymentStatus = async (req, res) => {
           parsedAddress = JSON.parse(payment.address);
         } catch (error) {
           console.error("Error parsing address:", error);
-          parsedAddress = {}; // Default to an empty object if parsing fails
+          parsedAddress = {};
         }
 
         // Construct the formatted address
@@ -1446,7 +1452,7 @@ const updatePaymentStatus = async (req, res) => {
         }, ${parsedAddress.state || ""}, ${parsedAddress.pincode || ""}`;
 
         // Extract GST Number
-        const customerGstNumber = parsedAddress.gstNumber || "N/A"; // Default to "N/A" if missing
+        const customerGstNumber = parsedAddress.gstNumber || "N/A";
 
         console.log("Generating invoice PDF for:", {
           userId: payment.userId,
@@ -1470,7 +1476,7 @@ const updatePaymentStatus = async (req, res) => {
           productinfo: payment.name,
           quantity: order.quantity,
           customerAddress: formattedAddress,
-          customerGstNumber: customerGstNumber, // Include GST Number
+          customerGstNumber: customerGstNumber,
           amountInWords: amountInWords,
         })
           .then(() => console.log("Invoice PDF generated successfully"))
@@ -1479,9 +1485,10 @@ const updatePaymentStatus = async (req, res) => {
     }
 
     // Send response immediately, while invoice generation happens in the background
-    res
-      .status(200)
-      .json({ message: `Payment status updated to ${status}`, payment });
+    res.status(200).json({
+      message: `Payment status updated to ${status}`,
+      payment,
+    });
   } catch (error) {
     console.error("Error updating payment status:", error);
     res.status(500).json({ message: "Internal server error." });

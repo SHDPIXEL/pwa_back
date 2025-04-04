@@ -42,9 +42,9 @@ const Orders = sequelize.define(
       allowNull: false,
     },
     status: {
-      type: DataTypes.ENUM("Pending", "Completed", "Cancelled"),
+      type: DataTypes.ENUM("Pending", "Completed", "Cancelled","Order Created"),
       allowNull: false,
-      defaultValue: "Pending",
+      defaultValue: "Order Created",
     },
     orderDate: {
       type: DataTypes.DATE,

@@ -462,8 +462,6 @@ The Breboot System
   };
 };
 
-
-
 // Send OTP via SMS
 async function sendOtpViaSms(phone, otp) {
   const senderId = senderIds[Math.floor(Math.random() * senderIds.length)];
@@ -818,17 +816,18 @@ const loginUser = async (req, res) => {
 
     if (!user) {
       console.log(
-        `User not registered with ${email ? "email" : "phone"}: ${email || phone
+        `User not registered with ${email ? "email" : "phone"}: ${
+          email || phone
         }`
       );
       return res.status(404).json({
-        message: `User is not registered with this ${email ? "email" : "phone"
-          }.`,
+        message: `User is not registered with this ${
+          email ? "email" : "phone"
+        }.`,
       });
     }
 
     if (phone) {
-
       if (phone === "0000000000") {
         storeOTP(phone, "000000");
         console.log("Dummy user detected, skipping OTP verification.");
@@ -849,7 +848,8 @@ const loginUser = async (req, res) => {
       if (!phoneRegex.test(phone) && phone !== "0000000000") {
         console.log(`Invalid phone number entered: ${phone}`);
         return res.status(400).json({
-          message: "Invalid phone number. Must be 10 digits and cannot start with 0.",
+          message:
+            "Invalid phone number. Must be 10 digits and cannot start with 0.",
         });
       }
 
@@ -1081,7 +1081,7 @@ const createOrder = async (req, res) => {
     if (!product.inStock) {
       return res.status(400).json({ error: "Product is out of stock." });
     }
-    
+
     const orderId = `ORD-${uuidv4().slice(0, 8).toUpperCase()}`;
     // Generate unique orderId
     const orderDate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -1120,7 +1120,9 @@ const createPayment = async (req, res) => {
 
       const token = req.headers.authorization?.split(" ")[1];
       if (!token) {
-        return res.status(401).json({ error: "Unauthorized: No token provided" });
+        return res
+          .status(401) 
+          .json({ error: "Unauthorized: No token provided" });
       }
 
       let userId;
@@ -1128,7 +1130,9 @@ const createPayment = async (req, res) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded?.id;
       } catch (error) {
-        return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+        return res
+          .status(401)
+          .json({ error: "Unauthorized: Invalid or expired token" });
       }
 
       console.log("Request body:", req.body);
@@ -1137,17 +1141,25 @@ const createPayment = async (req, res) => {
       const { transactionId, orderId, name, image, address } = req.body;
 
       if (!transactionId || !orderId || !req.file || !name || !image) {
-        return res.status(400).json({ error: "Transaction ID, Order ID, and image are required." });
+        return res
+          .status(400)
+          .json({ error: "Transaction ID, Order ID, and image are required." });
       }
 
       const order = await Orders.findOne({ where: { orderId, userId } });
       if (!order) {
-        return res.status(404).json({ error: "Order not found or does not belong to the user." });
+        return res
+          .status(404)
+          .json({ error: "Order not found or does not belong to the user." });
       }
 
-      const existingPayment = await Payment.findOne({ where: { transactionId } });
+      const existingPayment = await Payment.findOne({
+        where: { transactionId },
+      });
       if (existingPayment) {
-        return res.status(400).json({ error: "Transaction ID already exists." });
+        return res
+          .status(400)
+          .json({ error: "Transaction ID already exists." });
       }
 
       const paymentScreenshot = `assets/images/payments/${req.file.filename}`;
@@ -1162,19 +1174,26 @@ const createPayment = async (req, res) => {
         address,
       });
 
-      await Orders.update({ paymentId: payment.id }, { where: { orderId } });
+      // ✅ Update the order's paymentId and status to "Pending"
+      order.paymentId = payment.id;
+      order.status = "Pending";
+      await order.save();
 
       console.log("Payment created successfully:", payment);
 
-      // **Send Payment Confirmation Email**
+      // ✅ Send Payment Confirmation Email
       const emailSubject = "Payment Submission Received - Breboot App";
-      const { text, html } = getPaymentConfirmationEmailContent(name, orderId, transactionId);
+      const { text, html } = getPaymentConfirmationEmailContent(
+        name,
+        orderId,
+        transactionId
+      );
 
       try {
         await sendMail("no-reply@giantinfotech.in", emailSubject, text, html);
         console.log(`Payment confirmation email sent successfully`);
       } catch (emailError) {
-        console.error(`Failed to send payment confirmation email to :`, emailError);
+        console.error(`Failed to send payment confirmation email:`, emailError);
       }
 
       return res.status(201).json({
@@ -1187,7 +1206,6 @@ const createPayment = async (req, res) => {
     res.status(500).json({ error: `Server error: ${error.message}` });
   }
 };
-
 
 module.exports = {
   registerUser,
