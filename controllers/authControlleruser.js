@@ -828,6 +828,7 @@ const loginUser = async (req, res) => {
         }`
       );
       return res.status(404).json({
+        status: "error",
         message: `User is not registered with this ${
           email ? "email" : "phone"
         }.`,
@@ -855,6 +856,7 @@ const loginUser = async (req, res) => {
       if (!phoneRegex.test(phone) && phone !== "0000000000") {
         console.log(`Invalid phone number entered: ${phone}`);
         return res.status(400).json({
+          status: "error",
           message:
             "Invalid phone number. Must be 10 digits and cannot start with 0.",
         });
@@ -866,11 +868,11 @@ const loginUser = async (req, res) => {
 
         try {
           await sendOtpViaSms(phone, generatedOTP);
-          return res.status(200).json({ message: "OTP sent to phone", phone });
+          return res.status(200).json({ status: "success", message: "OTP sent to phone", phone });
         } catch (error) {
           return res
             .status(500)
-            .json({ message: "Failed to send OTP via SMS" });
+            .json({ status: "error", message: "Failed to send OTP via SMS" });
         }
       }
 
@@ -881,7 +883,7 @@ const loginUser = async (req, res) => {
         const { valid, message } = validateOTP(phone, otp);
         if (!valid) {
           console.log(`OTP verification failed for ${phone}: ${message}`);
-          return res.status(400).json({ message });
+          return res.status(400).json({ status: "error", message });
         }
         console.log(`OTP verified successfully for ${phone}`);
         otpStatus = "success";
@@ -895,7 +897,7 @@ const loginUser = async (req, res) => {
 
       if (!user) {
         console.log("User not found with provided email.");
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ status: "error", message: "User not found" });
       }
 
       // Validate password
@@ -903,19 +905,19 @@ const loginUser = async (req, res) => {
         console.log("Validation failed: Password is required for email login.");
         return res
           .status(400)
-          .json({ message: "Password is required for email login." });
+          .json({ status: "error", message: "Password is required for email login." });
       }
 
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
         console.log("Invalid password entered.");
-        return res.status(401).json({ message: "Invalid password" });
+        return res.status(401).json({ status: "error", message: "Invalid password" });
       }
     }
 
     if (!user) {
       console.log("User not found in database.");
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({status: "error",  message: "User not found" });
     }
 
     // Generate token
