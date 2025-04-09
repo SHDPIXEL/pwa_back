@@ -814,6 +814,13 @@ const loginUser = async (req, res) => {
       },
     });
 
+    if (user && user.status === "Inactive") {
+      return res.status(200).json({
+        status: "error",
+        message: "Account with this phone was Deleted. Please contact support.",
+      });
+    }
+
     if (!user) {
       console.log(
         `User not registered with ${email ? "email" : "phone"}: ${
@@ -921,7 +928,12 @@ const loginUser = async (req, res) => {
     console.log("Login successful. Sending response...");
     return res
       .status(200)
-      .json({ message: "Login successful", token, userType: user.userType });
+      .json({
+        status: "success",
+        message: "Login successful",
+        token,
+        userType: user.userType,
+      });
   } catch (error) {
     console.error("Error logging in:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -1121,7 +1133,7 @@ const createPayment = async (req, res) => {
       const token = req.headers.authorization?.split(" ")[1];
       if (!token) {
         return res
-          .status(401) 
+          .status(401)
           .json({ error: "Unauthorized: No token provided" });
       }
 
@@ -1207,6 +1219,43 @@ const createPayment = async (req, res) => {
   }
 };
 
+const deletAccount = async function (req, res) {
+  try {
+    // Extract token from header
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized: No token provided" });
+    }
+
+    // Verify and decode the token
+    let userId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded?.id;
+    } catch (error) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Invalid or expired token" });
+    }
+
+    // Find and deactivate the user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.status = "Inactive";
+    await user.save();
+
+    return res.status(200).json({
+      message: "Your account has been successfully Deleted.",
+    });
+  } catch (err) {
+    console.error("Delete Account Error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -1214,5 +1263,6 @@ module.exports = {
   createOrder,
   createPayment,
   resetPassword,
+  deletAccount,
   forgotPassword,
 };
