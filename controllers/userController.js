@@ -78,7 +78,9 @@ const updateUser = async (req, res) => {
     }
 
     // Extract fields from request body
-    const { name, phone, email, gender, status, state } = req.body;
+    const { name, phone, email, gender, status } = req.body;
+
+    const state = "not needed";
 
     // Validate status
     if (status && !["Active", "Inactive"].includes(status)) {

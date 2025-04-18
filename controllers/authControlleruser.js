@@ -615,9 +615,13 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const { name, phone, email, gender, status, userType, state, otp } =
+    const { name, phone, email, status, userType, otp } =
       req.body;
     let { code } = req.body;
+
+    const state = "not needed";
+
+    const gender = "not needed";
 
     // Ensure at least one of phone or email is provided
     if (!phone && !email) {
