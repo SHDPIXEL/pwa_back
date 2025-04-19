@@ -615,13 +615,9 @@ const registerUser = async (req, res) => {
   try {
     console.log("Received registration request with data:", req.body);
 
-    const { name, phone, email, status, userType, otp } =
+    const { name, phone, email, status, userType, state, gender, otp } =
       req.body;
     let { code } = req.body;
-
-    const state = "not needed";
-
-    const gender = "not needed";
 
     // Ensure at least one of phone or email is provided
     if (!phone && !email) {
@@ -726,6 +722,11 @@ const registerUser = async (req, res) => {
       console.log(
         `Code verification passed. User linked to Doctor with code: ${code}`
       );
+
+      // Reward the Doctor with 50 points
+      await doctor.increment("points", { by: 50 });
+      console.log(`Doctor ${doctor.name} rewarded with 50 points`);
+      
       initialPoints = 50;
     }
 
@@ -872,7 +873,9 @@ const loginUser = async (req, res) => {
 
         try {
           await sendOtpViaSms(phone, generatedOTP);
-          return res.status(200).json({ status: "success", message: "OTP sent to phone", phone });
+          return res
+            .status(200)
+            .json({ status: "success", message: "OTP sent to phone", phone });
         } catch (error) {
           return res
             .status(500)
@@ -901,27 +904,34 @@ const loginUser = async (req, res) => {
 
       if (!user) {
         console.log("User not found with provided email.");
-        return res.status(404).json({ status: "error", message: "User not found" });
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found" });
       }
 
       // Validate password
       if (!password || password.trim() === "") {
         console.log("Validation failed: Password is required for email login.");
-        return res
-          .status(400)
-          .json({ status: "error", message: "Password is required for email login." });
+        return res.status(400).json({
+          status: "error",
+          message: "Password is required for email login.",
+        });
       }
 
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
         console.log("Invalid password entered.");
-        return res.status(401).json({ status: "error", message: "Invalid password" });
+        return res
+          .status(401)
+          .json({ status: "error", message: "Invalid password" });
       }
     }
 
     if (!user) {
       console.log("User not found in database.");
-      return res.status(404).json({status: "error",  message: "User not found" });
+      return res
+        .status(404)
+        .json({ status: "error", message: "User not found" });
     }
 
     // Generate token
@@ -932,14 +942,12 @@ const loginUser = async (req, res) => {
     );
 
     console.log("Login successful. Sending response...");
-    return res
-      .status(200)
-      .json({
-        status: "success",
-        message: "Login successful",
-        token,
-        userType: user.userType,
-      });
+    return res.status(200).json({
+      status: "success",
+      message: "Login successful",
+      token,
+      userType: user.userType,
+    });
   } catch (error) {
     console.error("Error logging in:", error);
     return res.status(500).json({ message: "Internal server error" });

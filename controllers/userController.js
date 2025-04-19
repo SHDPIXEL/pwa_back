@@ -78,9 +78,7 @@ const updateUser = async (req, res) => {
     }
 
     // Extract fields from request body
-    const { name, phone, email, gender, status } = req.body;
-
-    const state = "not needed";
+    const { name, phone, email, gender, state, status } = req.body;
 
     // Validate status
     if (status && !["Active", "Inactive"].includes(status)) {
@@ -508,7 +506,6 @@ const submitChallengeForm = async (req, res) => {
       const { name, phone, remark, mediaType, challengeId } = req.body;
       console.log("Media Type:", mediaType);
 
-
       // Validate required fields
       if (!name || !phone || !mediaType || !challengeId) {
         return res.status(400).json({
@@ -552,7 +549,10 @@ const submitChallengeForm = async (req, res) => {
         phone,
         remark,
         mediaType,
-        mediaFiles: mediaFiles.length > 0 ? mediaFiles.map(file => file.replace(/\\/g, "/")) : null,
+        mediaFiles:
+          mediaFiles.length > 0
+            ? mediaFiles.map((file) => file.replace(/\\/g, "/"))
+            : null,
         challengeId,
         status: "Pending",
       });
