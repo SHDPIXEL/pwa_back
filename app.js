@@ -1,10 +1,9 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors"); // Import CORS middleware
-const path = require('path')
+const path = require("path");
 const helmet = require("helmet");
 require("./connection");
-
 
 const PORT = process.env.PORT || 3000; // Use a fallback port if PORT is undefined
 
@@ -17,41 +16,55 @@ if (PORT === 3000) {
 
 const app = express();
 // Use CORS middleware for all routes
-app.use(cors({
-  origin: ["https://admin.breboot.celagenex.com", "https://user.breboot.celagenex.com"],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-}));
+
+// Middleware to parse JSON
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+
+app.use(
+  cors({
+    origin: [
+      "https://admin.breboot.celagenex.com",
+      "https://user.breboot.celagenex.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
 
 // Use CORS middleware for all routes
 //  app.use(cors()); // Enable CORS for all routes
-
 
 // Use Helmet for security
 app.use(helmet());
 
 // Customize Helmet (optional)
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "https://admin.breboot.celagenex.com","*", "https://user.breboot.celagenex.com", "data:"], // ✅ Allow images from your frontend
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: [
+          "'self'",
+          "https://admin.breboot.celagenex.com",
+          "*",
+          "https://user.breboot.celagenex.com",
+          "data:",
+        ], // ✅ Allow images from your frontend
+      },
     },
-  },
-  crossOriginResourcePolicy: { policy: "cross-origin" }, // ✅ Allow external images
-}));
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // ✅ Allow external images
+  })
+);
 
 //Import Admin Routes
 const authRouteradmin = require("./routes/authAdminRoutes");
-const adminRoutes = require("./routes/adminRoutes")
+const adminRoutes = require("./routes/adminRoutes");
 
 //Import User Routes
-const authRouteruser = require('./routes/authUserRouter')
-const userRoutes = require('./routes/userRoutes')
-
-// Middleware to parse JSON
-app.use(express.json());
+const authRouteruser = require("./routes/authUserRouter");
+const userRoutes = require("./routes/userRoutes");
 
 // Base route
 app.get("/", (req, res) => {
@@ -150,25 +163,32 @@ app.get("/", (req, res) => {
 });
 
 // Serve static files from the "assets" folder
-app.use('/assets', (req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // 👈 Allow cross-origin requests
-  next();
-}, express.static(path.join(__dirname, 'assets')));
+app.use(
+  "/assets",
+  (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // 👈 Allow cross-origin requests
+    next();
+  },
+  express.static(path.join(__dirname, "assets"))
+);
 
 // Serve static files from the invoices directory
 app.use("/invoices", express.static(path.join(__dirname, "invoices")));
 
 //Admin
 app.use("/api/auth", authRouteradmin);
-app.use("/admin",adminRoutes)
+app.use("/admin", adminRoutes);
 
 //User
-app.use("/auth/user",authRouteruser)
-app.use("/user",userRoutes)
+app.use("/auth/user", authRouteruser);
+app.use("/user", userRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {

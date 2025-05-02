@@ -73,7 +73,7 @@ const upload = (type) =>
   multer({
     storage: storage(type),
     fileFilter: fileFilter,
-    limits: { fileSize: 50 * 1024 * 1024 }, // Limit file size to 10MB
+    limits: { fileSize: 10 * 1024 * 1024 }, // Limit file size to 10MB
   });
 
 // Export the dynamic upload middleware
