@@ -10,7 +10,7 @@ const Orders = require("../models/order");
 const Users = require("../models/user");
 const uploadImage = require("../middleware/uploadMiddleware");
 const { Op } = require("sequelize");
-const moment = require("moment");
+const moment = require("moment-timezone");
 const fs = require("fs");
 const path = require("path");
 const numberToWords = require("number-to-words");
@@ -40,7 +40,7 @@ const generateInvoicePDF = async ({
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Modern Invoice</title>
+        <title>Celagenex Invoice</title>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -181,7 +181,7 @@ const generateInvoicePDF = async ({
                 <div class="supplier-info" style="flex: 1; text-align: left;">
                     <p><strong>Supplier Name:</strong> Celagenex Research (India) Pvt. Ltd.</p>
                     <p><strong>Supplier Address:</strong> 6th Floor, Bellona Building, Hiranandani Estate, Thane, Mumbai - 400607</p>
-                    <p><strong>GSTIN:</strong> 0000000000000</p>
+                    <p><strong>GSTIN:</strong> 27AAICC4124A1Z7</p>
                 </div>
                 <div class="customer-info" style="flex: 1; text-align: right;">
                     <p><strong>Name:</strong> ${name}</p>
@@ -1468,13 +1468,16 @@ const updatePaymentStatus = async (req, res) => {
           gstNumber: customerGstNumber,
         });
 
+        const invoiceDate = moment().tz("Asia/Kolkata").format("DD-MM-YYYY");
+        const invoiceTime = moment().tz("Asia/Kolkata").format("hh:mm:ss A");
+
         // Generate Invoice PDF in the background
         generateInvoicePDF({
           userId: payment.userId,
           name: user.name,
           phoneNumber: user.phone,
-          invoiceDate: new Date().toISOString().split("T")[0],
-          invoiceTime: new Date().toLocaleTimeString(),
+          invoiceDate: invoiceDate,
+          invoiceTime: invoiceTime,
           orderId: payment.orderId,
           transactionId: payment.transactionId,
           amount: order.amount,
@@ -1524,6 +1527,7 @@ const getAllOrdersWithPayments = async (req, res) => {
         "orderDate",
         "createdAt",
       ],
+      order: [["createdAt", "DESC"]], // ✅ Sort by latest orders first
     });
 
     if (!ordersWithPayments.length) {
