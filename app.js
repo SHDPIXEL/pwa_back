@@ -26,6 +26,8 @@ app.use(
     origin: [
       "https://admin.breboot.celagenex.com",
       "https://user.breboot.celagenex.com",
+      "http://192.168.1.16:3000",
+      "http://192.168.1.16:3001"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],

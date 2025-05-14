@@ -39,7 +39,7 @@ Redeem.belongsTo(Rewards, { foreignKey: "rewardId", as: "reward" });
 User.hasMany(Redeem, { foreignKey: "userId", as: "redemptions" });
 Redeem.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// // Sync with error handling
+// // // Sync with error handling
 (async () => {
   try {
     await Redeem.sync({ force: false });

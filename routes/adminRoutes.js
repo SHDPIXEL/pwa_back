@@ -33,7 +33,9 @@ const {
   getAllPayments,//allpayments
   getAllOrders,//allorders
   updatePaymentStatus,
-  getAllOrdersWithPayments
+  getAllOrdersWithPayments,
+  createPaymentForOrder,
+  getEligibleOrdersForPayment
 } = require("../controllers/adminController");
 const { route } = require("./userRoutes");
 
@@ -116,6 +118,12 @@ router.get("/getPayments",getAllPayments)
 router.get("/getOrders",getAllOrders)
 router.put("/updatePaymentStatus", updatePaymentStatus);
 router.get("/excel_data", getAllOrdersWithPayments);
+
+//{creating payments in admin}
+//eligible orders
+router.get("/eligible-orders", getEligibleOrdersForPayment);
+//manually adding payment
+router.post("/create-payment", createPaymentForOrder);
 
 
 module.exports = router;
