@@ -16,7 +16,7 @@ const path = require("path");
 const numberToWords = require("number-to-words");
 const puppeteer = require("puppeteer");
 
-const BASE_URL = "http://192.168.1.11:4040"; // Set your backend URL
+const BASE_URL = "https://api.breboot.celagenex.com"; // Set your backend URL
 
 const generateInvoicePDF = async ({
   userId,
@@ -167,7 +167,7 @@ const generateInvoicePDF = async ({
             <!-- Header Section -->
             <div class="header">
                 <div class="logo-section">
-                    <img src="https://user.cholinationdrive.needsunleashed.com/assets/Logo-RadocjPK.png" alt="Breboot Logo">
+                    <img src="https://user.breboot.celagenex.com/assets/BrebootLogo-CItD85p7.svg" alt="Breboot Logo">
                 </div>
             </div>
             
@@ -278,7 +278,10 @@ const generateInvoicePDF = async ({
     // Set viewport to ensure proper rendering
     await page.setViewport({ width: 800, height: 1000 });
 
-    await page.setContent(invoiceHtml, { waitUntil: "networkidle0" });
+    await page.setContent(invoiceHtml, {
+      timeout: 60000,
+      waitUntil: "networkidle0",
+    });
 
     // Generate PDF with defined margins to avoid excessive space
     await page.pdf({
@@ -1280,7 +1283,9 @@ const getCompletedPaymentsGraph = async (req, res) => {
 const getAllPayments = async (req, res) => {
   try {
     // Fetch all payments
-    const payments = await Payment.findAll();
+    const payments = await Payment.findAll({
+      order: [["createdAt", "DESC"]], // Sort by createdAt in descending order
+    });
 
     if (!payments.length) {
       return res.status(404).json({ error: "No payments found" });
@@ -1622,6 +1627,7 @@ const getEligibleOrdersForPayment = async (req, res) => {
     const createdOrders = await Orders.findAll({
       where: { status: "Order Created" },
       attributes: ["orderId"], // Only fetch orderId
+      order: [["createdAt", "DESC"]], // Sort by createdAt in descending order
     });
 
     const orderIds = createdOrders.map((order) => order.orderId);
